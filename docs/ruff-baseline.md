@@ -15,9 +15,11 @@ Status: `IN FORCE` from 2026-09-29. This is a ratchet, not a clean-up: existing 
 
 ## The baseline
 
-200 findings in 70 files at the time of writing: 125 `BLE001` and 75 `S` findings (`S104`, `S105`, `S106`, `S108`,
-`S110`, `S112`, `S310`, `S506`, `S603`, `S607`, `S608`). `S101` (assert) is never counted because it is a test-only pattern and
-is ignored there.
+180 findings in 68 files: 111 `BLE001` and 69 `S` findings (`S101`, `S104`, `S105`, `S106`, `S108`, `S110`, `S112`,
+`S310`, `S506`, `S603`, `S607`). The first version of this page said 200 findings, 125 and 75; the committed baseline
+file said 200, 126 and 74, so that text was slightly off, and it has been recomputed from the file. Reviewed and
+removed on 2026-09-30: 20 findings in `backend_app/worker.py`, `backend_app/security_state.py` and `src/database.py`
+(see "What has been reviewed").
 
 Two records describe the same thing and must agree: the per-file list in `[tool.ruff.lint.per-file-ignores]` and the
 per-file counts in [tests/ruff_baseline.json](../tests/ruff_baseline.json). The test fails if they differ.
@@ -35,7 +37,7 @@ The counts only move down. Never raise a count to make the test pass.
 
 ## What this does and does not claim
 
-- **The baseline is not an approval.** ~111 of the 125 blind excepts are outside tests. They were listed, not reviewed.
+- **The baseline is not an approval.** 97 of the remaining 111 blind excepts are outside tests (it was 112 before the review below). Apart from the files under What has been reviewed, they were listed, not reviewed.
   Many are visibly fail-closed or best-effort by design (a failed `logger.debug` on shutdown, `return None` after a parse
   failure); some may hide a real error. Nobody has classified them.
 - **They were not annotated.** A reason on each `noqa` has to come from someone who has read the handler. Writing 111 reasons
@@ -44,8 +46,27 @@ The counts only move down. Never raise a count to make the test pass.
 - `S603`/`S607` in `scripts/` are subprocess calls with fixed argument lists, `S310` is `urllib` against configured URLs,
   `S105`/`S106` outside tests are named constants (for example a config key name), not credentials. This is from reading the
   rule names and sampling, not from reviewing each one.
-- `S608` (SQL built from strings) appears four times: three in `backend_app/security_state.py` and one in `src/database.py`. Two of them were read while writing this: `security_state.py:448` splices only the internal fragments `key_clause` and `lock_clause` into the statement and binds the values, and `database.py:650` interpolates table and column names taken from the model metadata, quoted with `"`, into a `MAX()` query. Neither takes caller input on the path read, which is a reading of two call sites, not a review. The other two (`security_state.py:483` and `:739`) were not read. Read those first.
+- S608 (SQL built from strings): all four sites were read and are annotated in place with the reason, so none is in the baseline any more. See below.
 
+## What has been reviewed
+
+Reviewed 2026-09-30, by reading each handler and its callers: `backend_app/worker.py` (9 `BLE001`),
+`backend_app/security_state.py` (6 `BLE001`, 1 `S110`, 3 `S608`) and `src/database.py` (1 `S608`). Each is now either
+narrowed or carries a `# noqa: <code> - <reason>` that says what the swallow does. Tests pin that behaviour in
+[tests/test_blind_except_contracts.py](../tests/test_blind_except_contracts.py) (14 tests; 9 of 9 mutations of the handlers killed).
+
+| Where | Decision |
+|---|---|
+| `worker.py` job thread `except BaseException` | Kept. The exception is stored and re-raised in the calling thread, so `SystemExit` is not lost with the thread. |
+| `worker.py` claim, status write, job execution, finalization, prune, reap, queue depth, loop guard | Kept. Each is logged (with traceback, or as a warning for the advisory queue-depth gauge) and the worker continues. Housekeeping retries at the next interval. |
+| `security_state.py` two JSON fallbacks | **Narrowed** from `Exception` to `ValueError`. `json.loads` raises only `ValueError` for bad text, so nothing that was caught before is missed, and an unrelated bug is no longer swallowed. |
+| `security_state.py` Redis load/store/dispose | Kept. `redis` is an optional dependency, so its error types cannot be named here. A failed load returns `None`, which the caller turns into `409`; it never replays a wrong response (tested). |
+| `security_state.py` `dispose` (database) | Kept, best-effort shutdown. |
+| Four `S608` sites | Kept, annotated. Only module-built fragments (`key_clause`, `lock_clause`, a fixed tuple of table names, quoted table metadata) are spliced into the SQL; every value is a bound parameter. This is from reading the four call sites and their inputs, not a security audit. |
+
+What this does **not** claim: the other 111 blind excepts and 69 `S` findings have not been reviewed. One thing the review did
+not settle: `worker.py` logs the exception with a traceback but keeps the full text (`f"{type(exc).__name__}: {exc}"`) as the job's
+stored error. Whether job error text can carry sensitive data was not checked.
 ## How to lower it
 
 Fix or annotate the finding, then lower its count for that file in **both** `tests/ruff_baseline.json` and the matching

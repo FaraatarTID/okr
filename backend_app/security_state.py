@@ -360,7 +360,8 @@ class InMemorySecurityStateStore:
                     import json as _json
 
                     result["response"] = _json.loads(resp)
-                except Exception:
+                except ValueError:
+                    # Not JSON: keep the stored string; the caller only replays dict responses.
                     pass
             return result
 
@@ -423,7 +424,7 @@ class DatabaseSecurityStateStore:
     def dispose(self) -> None:
         try:
             self._engine.dispose()
-        except Exception as exc:  # best-effort shutdown path
+        except Exception as exc:  # noqa: BLE001 - best-effort shutdown path; logged at debug, nothing to recover
             _LOGGER.debug("Database security state dispose failed: %s", exc)
 
     def _session_state_key(self, session_digest: str) -> str:
@@ -447,7 +448,7 @@ class DatabaseSecurityStateStore:
                 parameters["after_key"] = after_key
             return conn.execute(
                 text(
-                    "SELECT state_key, state_value FROM backend_distributed_state "
+                    "SELECT state_key, state_value FROM backend_distributed_state "  # noqa: S608 - only the module-built key_clause/lock_clause fragments are spliced in; every value is a bound parameter
                     "WHERE state_key LIKE :prefix"
                     f"{key_clause} ORDER BY state_key ASC LIMIT :limit{lock_clause}"
                 ),
@@ -482,7 +483,7 @@ class DatabaseSecurityStateStore:
         lock_clause = " FOR UPDATE" if conn.dialect.name == "postgresql" else ""
         return conn.execute(
             text(
-                "SELECT state_value FROM backend_distributed_state "
+                "SELECT state_value FROM backend_distributed_state "  # noqa: S608 - lock_clause is a fixed string chosen from the dialect name; the key is a bound parameter
                 f"WHERE state_key = :key{lock_clause}"
             ),
             {"key": key},
@@ -738,7 +739,7 @@ class DatabaseSecurityStateStore:
                             )
                             conn.execute(
                                 text(
-                                    "DO $$ BEGIN "
+                                    "DO $$ BEGIN "  # noqa: S608 - _table comes from the fixed tuple above, never from input
                                     "IF EXISTS (SELECT 1 FROM pg_roles "
                                     "WHERE rolname IN ('anon', 'authenticated')) "
                                     f'THEN REVOKE ALL ON TABLE "{_table}" '
@@ -1033,7 +1034,7 @@ class DatabaseSecurityStateStore:
 
                     try:
                         result["response"] = _json.loads(row[1])
-                    except Exception:
+                    except ValueError:
                         result["response"] = None
                 else:
                     result["response"] = None
@@ -1198,7 +1199,7 @@ class RedisSecurityStateStore:
     def dispose(self) -> None:
         try:
             self._client.close()
-        except Exception as exc:  # best-effort shutdown path
+        except Exception as exc:  # noqa: BLE001 - best-effort shutdown path; logged at debug, nothing to recover
             _LOGGER.debug("Redis security state dispose failed: %s", exc)
 
     def _nonce_key(self, nonce: str) -> str:
@@ -1454,7 +1455,7 @@ class RedisSecurityStateStore:
             else:
                 result["response"] = None
             return result
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - redis is an optional dependency, so its error types cannot be named here; None makes the caller answer 409 (fail closed), never replay a wrong response
             _LOGGER.debug("Failed to load Redis idempotent response: %s", exc)
             return None
 
@@ -1487,7 +1488,7 @@ class RedisSecurityStateStore:
                 self._client.set(redis_key, new_value, ex=ttl)
             else:
                 self._client.set(redis_key, new_value)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - redis is an optional dependency, so its error types cannot be named here; the response is not stored, so a retry gets 409 rather than a replay
             _LOGGER.debug("Failed to store Redis idempotent response: %s", exc)
 
 

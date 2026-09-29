@@ -535,7 +535,7 @@ Phase 4, because it needs a decision before it needs code.
 ### Dependencies and lint follow-ups (2026-09-29)
 
 - **P5.1, baseline in place, findings not cleared.** `BLE` and `S` are enabled with a shrink-only per-file baseline
-  ([ruff-baseline.md](ruff-baseline.md)). The 125 blind excepts and 75 bandit findings are listed, not reviewed.
+  ([ruff-baseline.md](ruff-baseline.md)). 111 blind excepts and 69 bandit findings remain listed, not reviewed; 20 findings in `worker.py`, `security_state.py` and `src/database.py` were reviewed on 2026-09-30 (see the page).
 - **P5.2a, done.** `playwright` moved from runtime dependencies to a `browser` dependency group that `dev` includes.
   The backend image installs `--no-dev`, so it drops from 217.8 MB to 120.2 MB (measured, `docker image inspect`).
   It never had a Chromium binary, so `PDF_METHOD=chromium` could not render from it before or after; startup preflight
