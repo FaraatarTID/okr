@@ -199,6 +199,16 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        # Official redis:7.4.11 index digest; this service belongs only to this job.
+        image: redis:7.4.11@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7
+        ports:
+          - 127.0.0.1:6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     env:
       # Deliberately not OKR_DATABASE_URL: tests/conftest.py:19-20 overwrites that with
@@ -209,6 +219,8 @@ jobs:
       OKR_REQUIRE_TEST_POSTGRES_URL: "true"
       OKR_TEST_PGBOUNCER_URL: postgresql+psycopg2://okr:okr@localhost:6543/okr
       OKR_REQUIRE_TEST_PGBOUNCER_URL: "true"
+      OKR_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      OKR_REQUIRE_T23_PROCESS_DRILL: "true"
 
     steps:
       - name: Checkout
@@ -260,6 +272,9 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "22"
+
+      - name: Install SPA BFF process drill dependencies
+        run: npm ci --prefix spa-bff --include=dev
 
       - name: Docs HQ Link Check
         run: uv run python scripts/check_docs_hq_links.py
@@ -364,6 +379,9 @@ jobs:
             tests/test_crud_authorization.py \
             tests/test_rbac_permissions.py \
             tests/test_alignment_dag.py
+
+      - name: T23 Session Registry Process Drill
+        run: python -m pytest -q tests/test_session_registry_process_integration.py
 
       - name: Python Test Suite
         run: |

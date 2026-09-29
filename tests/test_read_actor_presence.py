@@ -176,3 +176,51 @@ def test_authorized_actor_reaches_real_read_dispatch(
         assert payload["node_type"] == "TASK"
     elif kind in {"experiments.for_kr", "experiments.active_for_kr"}:
         assert len(payload["experiments"]) == 1
+
+
+def test_authorized_node_get_serializes_goal_descendants(read_client):
+    client, ids = read_client
+
+    response = client.post(
+        "/v1/read/query",
+        headers={"X-OKR-Actor": "f2_reader"},
+        json={
+            "kind": "node.get",
+            "params": {"node_id": ids["goal"], "node_type": "GOAL"},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    goal = response.json()["node"]
+    assert goal["id"] == ids["goal"]
+    assert goal["owner_id"] == ids["user"]
+    objective = goal["objectives"][0]
+    assert objective["id"] == ids["objective"]
+    key_result = objective["key_results"][0]
+    assert key_result["id"] == ids["kr"]
+    assert {task["id"] for task in key_result["tasks"]} >= {ids["task"]}
+
+
+def test_authorized_node_get_serializes_task_parent_chain(read_client):
+    client, ids = read_client
+
+    response = client.post(
+        "/v1/read/query",
+        headers={"X-OKR-Actor": "f2_reader"},
+        json={
+            "kind": "node.get",
+            "params": {"node_id": ids["task"], "node_type": "TASK"},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    task = response.json()["node"]
+    assert task["id"] == ids["task"]
+    assert task["work_logs"] == []
+    key_result = task["key_result"]
+    assert key_result["id"] == ids["kr"]
+    objective = key_result["objective"]
+    assert objective["id"] == ids["objective"]
+    goal = objective["goal"]
+    assert goal["id"] == ids["goal"]
+    assert goal["owner_id"] == ids["user"]

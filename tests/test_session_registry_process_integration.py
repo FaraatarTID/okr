@@ -34,6 +34,12 @@ _LOGIN_USERNAME = "t23_session_member"
 _LOGIN_PASSWORD = "T23-Process-Password-123!"
 
 
+def _skip_or_fail_missing_prerequisite(message: str) -> None:
+    if os.getenv("OKR_REQUIRE_T23_PROCESS_DRILL", "").strip().lower() == "true":
+        pytest.fail(message)
+    pytest.skip(message)
+
+
 def _free_local_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
@@ -315,7 +321,7 @@ def test_session_registry_processes_share_registration_and_revoke_across_restart
 ) -> None:
     redis_url = str(os.getenv("OKR_TEST_REDIS_URL", "")).strip()
     if not redis_url:
-        pytest.skip(
+        _skip_or_fail_missing_prerequisite(
             "Set OKR_TEST_REDIS_URL to an explicitly disposable Redis instance."
         )
 
@@ -336,7 +342,7 @@ def test_session_registry_processes_share_registration_and_revoke_across_restart
     repo_root = Path(__file__).resolve().parents[1]
     bff_root = repo_root / "spa-bff"
     if not (bff_root / "node_modules" / "tsx").exists():
-        pytest.skip(
+        _skip_or_fail_missing_prerequisite(
             "Install spa-bff Node dependencies to run the process integration drill."
         )
 
