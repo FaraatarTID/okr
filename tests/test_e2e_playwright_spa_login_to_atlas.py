@@ -18,6 +18,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 import pytest
+from tests._test_credentials import credential_password
 
 
 pytestmark = [pytest.mark.e2e, pytest.mark.integration]
@@ -42,6 +43,10 @@ _E2E_ROLES: dict[str, tuple[str, str]] = {
     "manager": ("e2e_manager", _TEST_PASSWORD),
     "member": ("e2e_member", _TEST_PASSWORD),
 }
+_PASSWORD_CHANGE_USERNAME = "e2e_password_change"
+_PASSWORD_CHANGE_INITIAL_PASSWORD = (
+    f"Aa1!{credential_password('e2e_password_change_initial')}"
+)
 
 
 class _JobResponse(TypedDict):
@@ -485,6 +490,7 @@ def _read_log_tail(path: Path, *, max_chars: int = 4000) -> str:
 
 def _seed_database(repo_root: Path, env: dict[str, str]) -> None:
     script = """
+import os
 from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session
@@ -544,11 +550,21 @@ with Session(engine, expire_on_commit=False) as session:
         must_change_password=False,
         password_changed_at=now,
     )
+    password_change_user = User(
+        username='e2e_password_change',
+        password_hash=crud.hash_password(os.environ['OKR_E2E_PASSWORD_CHANGE_INITIAL_PASSWORD']),
+        display_name='E2E Password Change',
+        role=UserRole.MEMBER,
+        is_active=True,
+        must_change_password=False,
+        password_changed_at=now,
+    )
     session.add(admin_user)
     session.add(manager_user)
     session.flush()
     member_user.manager_id = manager_user.id
     session.add(member_user)
+    session.add(password_change_user)
     session.flush()
 
     e2e_cycle = Cycle(
@@ -763,7 +779,11 @@ def e2e_stack(
         }
     )
 
-    _seed_database(repo_root, env)
+    seed_env = env.copy()
+    seed_env["OKR_E2E_PASSWORD_CHANGE_INITIAL_PASSWORD"] = (
+        _PASSWORD_CHANGE_INITIAL_PASSWORD
+    )
+    _seed_database(repo_root, seed_env)
 
     backend_log_path = tmp_dir / "backend.log"
     bff_log_path = tmp_dir / "bff.log"
@@ -971,10 +991,7 @@ def _login(page, username: str, password: str) -> None:
         resolved_username = username_input.input_value()
         resolved_password = password_input.input_value()
         if resolved_username != username or resolved_password != password:
-            raise AssertionError(
-                f"Failed to populate login fields. Observed username={resolved_username!r}, "
-                f"password={resolved_password!r}"
-            )
+            raise AssertionError("Failed to populate login fields.")
     for _ in range(5):
         if sign_in_button.is_enabled():
             break
@@ -987,9 +1004,8 @@ def _login(page, username: str, password: str) -> None:
         assert str(request_payload.get("username", "")) == username, (
             f"Sent username mismatch: {request_payload.get('username')!r} != {username!r}"
         )
-        assert str(request_payload.get("password", "")) == password, (
-            f"Sent password mismatch: {request_payload.get('password')!r}"
-        )
+        if str(request_payload.get("password", "")) != password:
+            raise AssertionError("Sent password mismatch.")
     expect(page.get_by_role("button", name="Sign out", exact=True)).to_be_visible(
         timeout=90_000
     )
@@ -1368,7 +1384,85 @@ def _exercise_route_surfaces(page, app_url: str) -> None:
     )
     latest_event = recent_events[0]
     event_label = f"{latest_event['action']} / {latest_event['entity']}"
-    expect(page.get_by_text(event_label, exact=True)).to_be_visible(timeout=90_000)
+    recent_events_panel = page.get_by_text("Recent events", exact=True).locator("..")
+    latest_event_label = recent_events_panel.locator(".report-list-row").first.locator(
+        "strong"
+    )
+    expect(latest_event_label).to_have_text(event_label, timeout=90_000)
+
+
+def test_signed_in_password_change_preserves_session(e2e_stack: E2EStack) -> None:
+    """A wrong current password fails; the real browser path changes it in place."""
+    from playwright.sync_api import expect, sync_playwright
+
+    chromium_path = _resolve_chromium_executable()
+    launch_kwargs: dict[str, object] = {"headless": True}
+    if chromium_path:
+        launch_kwargs["executable_path"] = chromium_path
+    new_password = f"Aa1!{credential_password('e2e_password_change')}"
+    wrong_password = f"Aa1!{credential_password('e2e_wrong_current_password')}"
+    operation_path = "/api/backend/v1/auth/change-password"
+
+    with sync_playwright() as playwright:
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
+        try:
+            context = browser.new_context(viewport={"width": 1600, "height": 1000})
+            page = context.new_page()
+            page.goto(
+                f"{e2e_stack.app_url}/login",
+                wait_until="domcontentloaded",
+                timeout=90_000,
+            )
+            _login(page, _PASSWORD_CHANGE_USERNAME, _PASSWORD_CHANGE_INITIAL_PASSWORD)
+
+            page.get_by_role("button", name="Change password", exact=True).click()
+            current_field = page.get_by_label("Current password", exact=True)
+            new_field = page.get_by_label("New password", exact=True)
+            confirm_field = page.get_by_label("Confirm new password", exact=True)
+            submit = page.get_by_role("button", name="Change password", exact=True)
+            expect(submit).to_be_disabled()
+            current_field.fill(wrong_password)
+            new_field.fill(new_password)
+            confirm_field.fill(new_password)
+            with page.expect_response(
+                lambda response: response.url == f"{e2e_stack.app_url}{operation_path}"
+                and response.request.method == "POST"
+            ) as denied_response:
+                submit.click()
+            assert denied_response.value.status == 401
+            expect(
+                page.get_by_text("Password change failed:", exact=False)
+            ).to_be_visible()
+
+            current_field.fill(_PASSWORD_CHANGE_INITIAL_PASSWORD)
+            with page.expect_response(
+                lambda response: response.url == f"{e2e_stack.app_url}{operation_path}"
+                and response.request.method == "POST"
+            ) as changed_response:
+                submit.click()
+            assert changed_response.value.status == 200
+            assert changed_response.value.json() == {"updated": True}
+            expect(page.get_by_role("status")).to_have_text(
+                "Password updated successfully."
+            )
+
+            # Reload sends the original browser's cookie through SPA -> BFF again.
+            with page.expect_response(
+                lambda response: response.url == f"{e2e_stack.app_url}/api/session/me"
+                and response.request.method == "GET"
+            ) as session_response:
+                page.reload(wait_until="domcontentloaded", timeout=90_000)
+            assert session_response.value.status == 200
+            assert (
+                session_response.value.json()["user"]["username"]
+                == _PASSWORD_CHANGE_USERNAME
+            )
+            expect(
+                page.get_by_role("button", name="Sign out", exact=True)
+            ).to_be_visible(timeout=90_000)
+            context.close()
+        finally:
+            browser.close()
 
 
 def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
