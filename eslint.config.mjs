@@ -11,9 +11,9 @@
 // Rule levels are measured, not guessed, and the evidence lives in the C4 rows
 // of docs/REMAINING_ENGINEERING_PLAN.md. `no-explicit-any` and
 // `no-floating-promises` are errors because the tree is clean of both, so
-// enforcing them costs nothing. `no-unused-vars` and `exhaustive-deps` are
-// warnings because they carry real, tracked findings that this config did not
-// clear — they are deliberately visible rather than silently allowed.
+// enforcing them costs nothing. `no-unused-vars` and `exhaustive-deps` remain
+// warnings so future findings stay visible; T16 resolved the tracked findings,
+// and the current whole-package lint is clean.
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
