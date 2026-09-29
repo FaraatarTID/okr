@@ -542,7 +542,26 @@ Phase 4, because it needs a decision before it needs code.
   used to pass `has_chromium_runtime=True` unconditionally and notice nothing; it now reads the real PDF
   configuration and logs a warning (advisory, not fatal). It still checks the Playwright package only, not that a
   browser binary launches.
-- **P5.2b, not started.** `psycopg2-binary` to `psycopg[binary]`.
+- **P5.2b, done.** `psycopg2-binary` replaced by `psycopg` + `psycopg-binary` 3.3.6 (pinned as two plain pins
+  because the manifest tooling reads only `name==version`; they must move together). The scheme is now
+  `postgresql+psycopg://`. `src/db_url.py` is the single place that owns the scheme, the legacy rewrite and the
+  driver options; deployed `.env` files that still say `postgresql+psycopg2://`, `postgresql://` or `postgres://`
+  keep working because every engine (application, security state, fleet control plane, Alembic, the scripts) now
+  goes through `normalize_database_url`. Production validation accepts either explicit scheme; a bare
+  `postgresql://` is normalised for engines but is not an accepted production setting, as before.
+  - **The one real behavioural risk was prepared statements.** psycopg 3 prepares a statement after five
+    executions; behind a transaction-mode pooler without support that fails. Measured against PgBouncer 1.25.2
+    with `max_prepared_statements=0`: 12 of 12 concurrent workers failed with the driver default
+    (`DuplicatePreparedStatement`, `InvalidSqlStatementName`) and 0 of 12 with `prepare_threshold=None`, which
+    every PostgreSQL engine now sets. PgBouncer 1.25.2 with its default (200) passes either way, so the test
+    pooler config now sets `max_prepared_statements = 0` and `tests/test_postgres_pooler_prepared_statements.py`
+    asserts that setting is in effect before it asserts anything else. Removing the option from any of the three
+    engine builders fails those tests (checked by mutation).
+  - **Not verified:** the production pooler. Supabase or Darkube PgBouncer version and its
+    `max_prepared_statements` are unknown to this repository; `prepare_threshold=None` is safe on any of them.
+    Behaviour under a real production workload, and any psycopg 3 type-adaptation difference in code paths
+    without a PostgreSQL test (for example JSON columns, `text[]`), were not exercised beyond the existing
+    PostgreSQL suites.
 
 ## Verification drills
 

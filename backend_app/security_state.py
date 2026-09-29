@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
 from backend_app.config import BackendSettings, get_backend_settings
+from src.db_url import is_postgres_url, normalize_database_url, postgres_connect_args
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -384,7 +385,7 @@ class DatabaseSecurityStateStore:
     def __init__(
         self, *, database_url: str, cleanup_interval_seconds: int = 60
     ) -> None:
-        safe_database_url = str(database_url or "").strip()
+        safe_database_url = normalize_database_url(database_url)
         if not safe_database_url:
             raise SecurityStateUnavailableError(
                 "Distributed security state backend requires OKR_DATABASE_URL."
@@ -394,7 +395,8 @@ class DatabaseSecurityStateStore:
 
         settings = get_backend_settings()
         kwargs = {}
-        if safe_database_url.lower().startswith("postgresql"):
+        if is_postgres_url(safe_database_url):
+            kwargs["connect_args"] = postgres_connect_args()
             if settings.security_state_db_use_null_pool:
                 kwargs["poolclass"] = NullPool
             else:

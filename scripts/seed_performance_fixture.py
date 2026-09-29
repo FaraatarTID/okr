@@ -26,6 +26,7 @@ if ROOT not in sys.path:
 
 from src.crud_auth_helpers import hash_password_from_crud
 from src.database import get_engine
+from src.db_url import is_postgres_url
 from src.models import (
     Cycle,
     Goal,
@@ -76,9 +77,9 @@ def validate_request(*, argv: list[str], environ: Mapping[str, str]) -> str:
     ) or _environment_value(environ, "DATABASE_URL")
     if not database_url:
         raise SeedConfigError("Set OKR_DATABASE_URL or DATABASE_URL before seeding.")
-    if not database_url.lower().startswith("postgresql+psycopg2://"):
+    if not is_postgres_url(database_url):
         raise SeedConfigError(
-            "This helper requires a PostgreSQL URL using the psycopg2 driver."
+            "This helper requires a PostgreSQL URL (postgresql+psycopg://)."
         )
 
     password = _environment_value(environ, "OKR_BOOTSTRAP_ADMIN_PASSWORD")

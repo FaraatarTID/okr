@@ -18,6 +18,6 @@ def test_backend_quality_requires_real_postgres_for_budget_tests() -> None:
 
     assert "postgres" in backend_quality["services"]
     assert backend_quality["env"]["OKR_TEST_POSTGRES_URL"].startswith(
-        "postgresql+psycopg2://"
+        "postgresql+psycopg://"
     )
     assert backend_quality["env"]["OKR_REQUIRE_TEST_POSTGRES_URL"].lower() == "true"

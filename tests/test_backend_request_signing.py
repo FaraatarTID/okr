@@ -169,7 +169,7 @@ def test_production_requires_distributed_security_state_backend(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "memory")
     monkeypatch.setenv(
         "OKR_DATABASE_URL",
-        "postgresql+psycopg2://user:pass@db.example.com:5432/postgres",
+        "postgresql+psycopg://user:pass@db.example.com:5432/postgres",
     )
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setattr(backend_main, "init_database", lambda: None)

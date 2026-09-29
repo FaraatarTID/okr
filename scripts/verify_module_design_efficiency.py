@@ -308,6 +308,7 @@ def run_checks() -> int:
             ],
             "forbidden_patterns": [
                 " import psycopg2",
+                " import psycopg",
                 "import sqlmodel",
                 "session.",
                 "requests.request(",

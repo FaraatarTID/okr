@@ -74,6 +74,11 @@ def run_migrations_online() -> None:
     # Override sqlalchemy.url with the one from src.database or env vars
     # This ensures consistency with the app's connection logic
     from src.database import _get_database_url
+    from src.db_url import (
+        is_postgres_url,
+        normalize_database_url,
+        postgres_connect_args,
+    )
 
     section = config.get_section(config.config_ini_section, {})
     try:
@@ -83,10 +88,20 @@ def run_migrations_online() -> None:
         # If we can't resolve it (e.g. no env var), hopefully it's in ini
         pass
 
+    # This engine is built from the raw environment value, so it must apply the same scheme
+    # rewrite and driver options as src.database._create_engine. Without it a deployed
+    # `postgresql+psycopg2://` URL names a driver that is no longer installed.
+    if section.get("sqlalchemy.url"):
+        section["sqlalchemy.url"] = normalize_database_url(section["sqlalchemy.url"])
+    engine_options: dict[str, object] = {}
+    if is_postgres_url(section.get("sqlalchemy.url")):
+        engine_options["connect_args"] = postgres_connect_args()
+
     connectable = engine_from_config(
         section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        **engine_options,
     )
 
     try:

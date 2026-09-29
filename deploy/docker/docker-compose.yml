@@ -26,7 +26,7 @@ services:
       dockerfile: deploy/docker/Dockerfile
     image: *release-backend-image
     environment:
-      - OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
+      - OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg://okr:okr_dev_password@postgres:5432/okr}
       - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE-database}
       - OKR_DEV_DISPOSABLE=${OKR_DEV_DISPOSABLE:-}
       - OKR_ENV=${OKR_ENV:-}
@@ -91,7 +91,7 @@ services:
       dockerfile: deploy/docker/Dockerfile
     image: *release-backend-image
     environment:
-      - OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
+      - OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg://okr:okr_dev_password@postgres:5432/okr}
       - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE-database}
       - OKR_DEV_DISPOSABLE=${OKR_DEV_DISPOSABLE:-}
       - OKR_ENV=${OKR_ENV:-}

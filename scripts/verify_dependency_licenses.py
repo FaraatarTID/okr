@@ -38,6 +38,26 @@ ALLOWED_LICENSES = {
     "Unlicense",
 }
 
+# Python packages whose license is outside ALLOWED_LICENSES but has been accepted by name. Deliberately
+# per-package and per-license rather than adding "LGPL-3.0-only" to ALLOWED_LICENSES, so a new
+# package under that license still fails the gate and has to be looked at.
+#
+# psycopg / psycopg-binary (LGPL-3.0-only) replaced psycopg2-binary (LGPL with exceptions), which the
+# generic "LGPL" entries above already admitted. Same license family, used as an unmodified
+# dynamically imported library. This entry is a policy acceptance made by the change that swapped
+# the driver; it has not had legal review, and whoever owns license policy should confirm it.
+PYTHON_LICENSE_EXCEPTIONS: dict[str, frozenset[str]] = {
+    "psycopg": frozenset({"LGPL-3.0-only"}),
+    "psycopg-binary": frozenset({"LGPL-3.0-only"}),
+}
+
+
+def _python_license_accepted(package: str, license_name: str) -> bool:
+    if _is_allowed_license_expr(license_name):
+        return True
+    return license_name in PYTHON_LICENSE_EXCEPTIONS.get(package.lower(), frozenset())
+
+
 LICENSE_EXCEPTIONS = {
     "spa-web": {
         "caniuse-lite": {"CC-BY-4.0", "no-restriction"},
@@ -146,7 +166,7 @@ def _run_pip_licenses() -> list[LicenseFinding]:
     for row in rows:
         package = str(row.get("Name", "unknown"))
         license_name = _normalize_license(str(row.get("License", "unknown")))
-        if not _is_allowed_license_expr(license_name):
+        if not _python_license_accepted(package, license_name):
             findings.append(
                 LicenseFinding(
                     scope="backend-python",

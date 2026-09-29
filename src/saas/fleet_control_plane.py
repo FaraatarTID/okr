@@ -31,6 +31,8 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 
+from src.db_url import is_postgres_url, normalize_database_url, postgres_connect_args
+
 if TYPE_CHECKING:
     from src.saas.release_operations import ReleaseArtifact
 
@@ -162,7 +164,11 @@ class SqlControlPlane:
     """PostgreSQL/SQLAlchemy repository with transactional task leasing."""
 
     def __init__(self, database_url: str) -> None:
-        self.engine: Engine = create_engine(database_url, future=True)
+        normalized_url = normalize_database_url(database_url)
+        engine_options: dict[str, object] = {"future": True}
+        if is_postgres_url(normalized_url):
+            engine_options["connect_args"] = postgres_connect_args()
+        self.engine: Engine = create_engine(normalized_url, **engine_options)
 
     def create_schema(self) -> None:
         metadata.create_all(self.engine)

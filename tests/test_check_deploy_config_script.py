@@ -70,9 +70,9 @@ def _write_env(
         else "bff_session_secret_1234567890123456"
     )
     db_url = (
-        "postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require"
+        "postgresql+psycopg://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require"
         if placeholder_values
-        else "postgresql+psycopg2://okr_app.myref:Sup3rSecret@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require"
+        else "postgresql+psycopg://okr_app.myref:Sup3rSecret@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require"
     )
     pdf_key = "" if placeholder_values else "pdf_live_key_123"
 

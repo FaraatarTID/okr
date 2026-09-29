@@ -14,10 +14,18 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.db_url import (  # noqa: E402
+    is_postgres_url,
+    normalize_database_url,
+    postgres_connect_args,
+)
 
 DEFAULT_TESTS = ("tests/test_postgres_integration_smoke.py",)
 
-_POSTGRES_DEFAULT_URL = "postgresql+psycopg2://okr:okr_dev_password@127.0.0.1:15432/okr"
+_POSTGRES_DEFAULT_URL = "postgresql+psycopg://okr:okr_dev_password@127.0.0.1:15432/okr"
 
 
 def _available_port(preferred: int) -> int:
@@ -83,7 +91,11 @@ def _wait_for_postgres(
         from sqlalchemy import create_engine, text
 
         def connect() -> None:
-            engine = create_engine(database_url, pool_pre_ping=False)
+            engine = create_engine(
+                normalize_database_url(database_url),
+                pool_pre_ping=False,
+                connect_args=postgres_connect_args(),
+            )
             try:
                 with engine.connect() as connection:
                     connection.execute(text("SELECT 1"))
@@ -113,7 +125,7 @@ def _wait_for_tcp(host: str, port: int, timeout_seconds: int) -> bool:
 
 def _require_postgres_available(database_url: str) -> None:
     lowered = str(database_url).strip().lower()
-    if not lowered.startswith("postgresql+psycopg2://"):
+    if not is_postgres_url(lowered):
         raise RuntimeError(
             "PostgreSQL verification requires a Postgres DSN in "
             "OKR_DATABASE_URL, DATABASE_URL, or --database-url."
@@ -226,7 +238,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--database-url",
-        help="PostgreSQL URL used for integration checks (must be postgresql+psycopg2://).",
+        help="PostgreSQL URL used for integration checks (must be postgresql+psycopg://).",
     )
     parser.add_argument(
         "--compose-file",

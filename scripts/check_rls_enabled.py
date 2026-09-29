@@ -31,8 +31,21 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 from sqlalchemy import bindparam, create_engine, text
+
+# CI runs this as `python scripts/check_rls_enabled.py`, which puts scripts/ (not the repo root)
+# on sys.path, so `src` needs the root added.
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from src.db_url import (  # noqa: E402
+    is_postgres_url,
+    normalize_database_url,
+    postgres_connect_args,
+)
 
 
 # Tables intentionally excluded from the check (metadata / non-user data).
@@ -169,11 +182,13 @@ def _role_grant_violations(engine) -> list[str] | None:
 
 def main() -> int:
     url = _database_url()
-    if not url.lower().startswith(("postgresql://", "postgresql+psycopg2://")):
+    if not is_postgres_url(url):
         print("check_rls_enabled: skipping — DSN is not PostgreSQL.")
         return 0
 
-    engine = create_engine(url)
+    engine = create_engine(
+        normalize_database_url(url), connect_args=postgres_connect_args()
+    )
     try:
         results = _tables_missing_rls(engine)
         missing = [name for name, rls in results if not rls]

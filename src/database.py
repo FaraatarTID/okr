@@ -11,7 +11,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import sys
 import time
 import traceback
@@ -28,6 +27,13 @@ from sqlalchemy.pool import NullPool
 from sqlmodel import SQLModel, Session, create_engine
 from sqlalchemy.sql.sqltypes import Integer, BigInteger, SmallInteger
 from src.config_runtime import get_bool_config, get_config_value
+from src.db_url import (
+    POSTGRES_SCHEME,
+    is_postgres_url,
+    normalize_database_url,
+    postgres_connect_args,
+    redact_database_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +53,9 @@ def _get_database_url() -> str:
 
 
 def _normalize_database_url(url: str) -> str:
-    normalized = str(url or "").strip()
-    # Backward compatibility with legacy Postgres DSNs.
-    if normalized.startswith("postgres://"):
-        normalized = normalized.replace("postgres://", "postgresql+psycopg2://", 1)
-    elif normalized.startswith("postgresql://"):
-        normalized = normalized.replace("postgresql://", "postgresql+psycopg2://", 1)
-    return normalized
+    # Legacy spellings (postgres://, postgresql://, postgresql+psycopg2://) are rewritten to the
+    # psycopg 3 scheme, so existing deployed configuration keeps working. See src/db_url.py.
+    return normalize_database_url(url)
 
 
 def _allow_non_supabase_url() -> bool:
@@ -93,18 +95,15 @@ def _validate_database_url(url: str) -> str:
     normalized = _normalize_database_url(url)
     if not normalized:
         raise RuntimeError("Database URL is required.")
-    if not (
-        normalized.startswith("postgresql+psycopg2://")
-        or normalized.startswith("sqlite:///")
-    ):
+    if not (is_postgres_url(normalized) or normalized.startswith("sqlite:///")):
         raise RuntimeError(
-            "Database URL must start with 'postgresql+psycopg2://' or 'sqlite:///'."
+            f"Database URL must start with '{POSTGRES_SCHEME}://' or 'sqlite:///'."
         )
     parsed = urlparse(normalized)
-    if normalized.startswith("postgresql+psycopg2://") and not parsed.hostname:
+    if is_postgres_url(normalized) and not parsed.hostname:
         raise RuntimeError("Database URL host is missing.")
 
-    if not normalized.startswith("postgresql+psycopg2://"):
+    if not is_postgres_url(normalized):
         return normalized
 
     if _allow_non_supabase_url():
@@ -143,18 +142,22 @@ def _create_engine(url: str):
     kwargs: dict[str, object] = {}
     if normalized.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
-    elif normalized.startswith("postgresql+psycopg2://"):
+    elif is_postgres_url(normalized):
+        # Driver options first: prepare_threshold=None (see src/db_url.py).
+        kwargs["connect_args"] = postgres_connect_args()
         # Supabase recommends PgBouncer transaction pooler; disable app-side pooling
         # by default to avoid session/prepared-statement conflicts.
         #
         # Status of that risk, checked rather than assumed (2026-09-21):
-        #   - The prepared-statement half does not apply to this stack. psycopg2
-        #     (2.9.12) has no automatic server-side prepared-statement mechanism at
-        #     all; `prepare_threshold` is a psycopg3 attribute and psycopg3 is not
-        #     installed. So there is nothing for a transaction-mode pooler to
-        #     invalidate -- but this is guaranteed by the DRIVER CHOICE, not by
-        #     anything this codebase does, and it would stop being true if the driver
-        #     were changed to psycopg3. Do not read it as a control we operate.
+        #   - The prepared-statement half WAS guaranteed by the driver choice (psycopg2 has no
+        #     automatic server-side prepared statements). The driver is now psycopg 3, which
+        #     prepares a statement after `prepare_threshold` (default 5) executions, so it is
+        #     now a control this codebase operates: `postgres_connect_args()` in src/db_url.py
+        #     sets `prepare_threshold=None` on every PostgreSQL engine, and
+        #     tests/test_db_url.py pins that. Measured against PgBouncer 1.25.2 with
+        #     `max_prepared_statements=0`: 12 of 12 concurrent workers failed with the default
+        #     and 0 of 12 with the option set. CI PgBouncer leaves the setting at its
+        #     default (200), where both pass, so CI alone would not catch its removal.
         #   - The server-side cursor half is the one that IS turnable here. Setting
         #     `use_server_side_cursors=True` on the engine emits DECLARE/FETCH/CLOSE,
         #     and a WITH HOLD cursor does not survive PgBouncer handing the connection
@@ -271,7 +274,7 @@ def _resolved_database_url() -> str:
 def _database_url_advisory(url: str) -> Optional[str]:
     """Return non-fatal DB URL advisories for known operational pitfalls."""
     normalized = _normalize_database_url(url)
-    if not normalized.startswith("postgresql+psycopg2://"):
+    if not is_postgres_url(normalized):
         return None
 
     parsed = urlparse(normalized)
@@ -493,11 +496,7 @@ def create_db_and_tables():
     except Exception as e:
         raw_message = f"{type(e).__name__}: {e}"
         # Redact credential-bearing URLs if present in driver errors.
-        sanitized_message = re.sub(
-            r"(postgres(?:ql\+psycopg2)?://)([^:@/\s]+):([^@/\s]+)@",
-            r"\1\2:***@",
-            raw_message,
-        )
+        sanitized_message = redact_database_url(raw_message)
         logger.error("Migration failed: %s", sanitized_message)
         logger.error("%s", traceback.format_exc())
         raise RuntimeError(f"Database migration failed. {sanitized_message}") from e
@@ -578,11 +577,7 @@ def _backup_table_names() -> list[str]:
 
 
 def _sanitize_url_for_backup(url: str) -> str:
-    return re.sub(
-        r"(postgres(?:ql\+psycopg2)?://)([^:@/\s]+):([^@/\s]+)@",
-        r"\1\2:***@",
-        str(url or ""),
-    )
+    return redact_database_url(url)
 
 
 def export_database_backup() -> bytes:

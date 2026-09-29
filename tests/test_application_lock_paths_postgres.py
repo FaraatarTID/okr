@@ -55,9 +55,9 @@ _BLOCK_PROBE_SECONDS = 1.5
 
 def _base_dsn() -> str:
     value = (os.getenv(DSN_ENV) or "").strip()
-    if not value.lower().startswith("postgresql+psycopg2://"):
+    if not value.lower().startswith("postgresql+psycopg://"):
         pytest.skip(
-            f"{DSN_ENV} must be a postgresql+psycopg2:// DSN to exercise real row "
+            f"{DSN_ENV} must be a postgresql+psycopg:// DSN to exercise real row "
             "locks; SQLite makes with_for_update a no-op, so without a DSN these "
             "guarantees are unmeasured rather than verified."
         )

@@ -150,7 +150,7 @@ def test_production_fails_closed_when_database_backend_unavailable(monkeypatch):
     monkeypatch.setenv("OKR_ENV", "production")
     monkeypatch.setenv(
         "OKR_DATABASE_URL",
-        "postgresql+psycopg2://okr_app:secret@db.example.com:5432/postgres?sslmode=require",
+        "postgresql+psycopg://okr_app:secret@db.example.com:5432/postgres?sslmode=require",
     )
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
     monkeypatch.setattr(
@@ -206,7 +206,7 @@ def test_redis_nonce_and_rate_limit(monkeypatch):
     monkeypatch.setenv("OKR_ENV", "production")
     monkeypatch.setenv(
         "OKR_DATABASE_URL",
-        "postgresql+psycopg2://okr_app:secret@db.example.com:5432/postgres?sslmode=require",
+        "postgresql+psycopg://okr_app:secret@db.example.com:5432/postgres?sslmode=require",
     )
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "redis")
     monkeypatch.setenv(
@@ -301,7 +301,7 @@ def test_production_fails_closed_when_redis_backend_unavailable(monkeypatch):
     monkeypatch.setenv("OKR_ENV", "production")
     monkeypatch.setenv(
         "OKR_DATABASE_URL",
-        "postgresql+psycopg2://okr_app:secret@db.example.com:5432/postgres?sslmode=require",
+        "postgresql+psycopg://okr_app:secret@db.example.com:5432/postgres?sslmode=require",
     )
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "redis")
     monkeypatch.setenv(
@@ -321,7 +321,7 @@ def test_database_security_state_uses_bounded_pool_by_default(monkeypatch):
     monkeypatch.delenv("OKR_BACKEND_SECURITY_STATE_DB_USE_NULL_POOL", raising=False)
 
     store = DatabaseSecurityStateStore(
-        database_url="postgresql+psycopg2://okr_app.PROJECT:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
+        database_url="postgresql+psycopg://okr_app.PROJECT:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
     )
     try:
         pool = store._engine.pool
@@ -345,7 +345,7 @@ def test_database_security_state_allows_opt_in_queue_pool(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_POOL_RECYCLE", "600")
 
     store = DatabaseSecurityStateStore(
-        database_url="postgresql+psycopg2://okr_app.PROJECT:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
+        database_url="postgresql+psycopg://okr_app.PROJECT:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
     )
     try:
         pool = store._engine.pool
@@ -370,7 +370,7 @@ def test_database_security_state_pool_bounds_checks(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_POOL_RECYCLE", "10")
 
     store = DatabaseSecurityStateStore(
-        database_url="postgresql+psycopg2://okr_app.PROJECT:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
+        database_url="postgresql+psycopg://okr_app.PROJECT:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
     )
     try:
         assert store._engine.pool.__class__ is not NullPool

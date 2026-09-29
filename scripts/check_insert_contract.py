@@ -27,6 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.required_insert_columns import REQUIRED_INSERT_COLUMNS  # noqa: E402
+from src.db_url import normalize_database_url  # noqa: E402
 
 BASELINE_PATH = PROJECT_ROOT / "alembic" / "versions" / "baseline_2026_08_26_schema.py"
 
@@ -45,7 +46,7 @@ def _schema_from_live_db() -> dict[str, dict[str, tuple[bool, bool]]]:
     url = os.environ.get("OKR_DATABASE_URL", "").strip()
     if not url:
         raise RuntimeError("OKR_DATABASE_URL is not set; cannot inspect live schema.")
-    engine = sqlalchemy.create_engine(url)
+    engine = sqlalchemy.create_engine(normalize_database_url(url))
     result: dict[str, dict[str, tuple[bool, bool]]] = {}
     with engine.connect() as conn:
         for table in TRACKED_TABLES:

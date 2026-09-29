@@ -7,6 +7,8 @@ import logging
 import os
 import secrets
 
+from src.db_url import has_explicit_postgres_driver
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -384,9 +386,10 @@ def validate_production_settings(settings: BackendSettings) -> None:
     database_url = str(os.getenv("OKR_DATABASE_URL", "")).strip()
     if not database_url:
         errors.append("Production requires OKR_DATABASE_URL to be set.")
-    elif not database_url.startswith("postgresql+psycopg2://"):
+    elif not has_explicit_postgres_driver(database_url):
         errors.append(
-            "Production requires OKR_DATABASE_URL to use the postgresql+psycopg2 driver."
+            "Production requires OKR_DATABASE_URL to use the postgresql+psycopg driver "
+            "(postgresql+psycopg2:// is still accepted and rewritten)."
         )
 
     if errors:

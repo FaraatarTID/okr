@@ -125,7 +125,7 @@ class TestFallbackWarning:
         # succeed and silently skip the fallback path under test.
         monkeypatch.setattr(database, "is_direct_db_available", lambda: False)
         monkeypatch.setattr(
-            database, "_resolved_database_url", lambda: "postgresql+psycopg2://x"
+            database, "_resolved_database_url", lambda: "postgresql+psycopg://x"
         )
         dam.reset_fallback_warning()  # isolate from other tests' latch state
 

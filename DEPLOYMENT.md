@@ -185,7 +185,7 @@ Prepare these values first:
 
 - `APP_DOMAIN`: for example `okr.mycompany.com`
 - `SERVER_IP`: public/private server IP
-- `OKR_DATABASE_URL`: example `postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
+- `OKR_DATABASE_URL`: example `postgresql+psycopg://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
 - `CONTACT_EMAIL`: certificate contact email
 
 Step 1: Prepare the Linux host (Ubuntu example)
@@ -235,7 +235,7 @@ Edit `deploy/docker/.env` and set at minimum:
 SPA_WEB_HOST_PORT=3000
 SPA_WEB_BIND_ADDRESS=127.0.0.1
 BFF_PUBLIC_ORIGIN=http://spa-bff:3001
-OKR_DATABASE_URL=postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require
+OKR_DATABASE_URL=postgresql+psycopg://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require
 OKR_BACKEND_API_URL=http://backend-api:8100
 OKR_BACKEND_SERVICE_TOKEN=CHANGE_ME_STRONG_SHARED_TOKEN
 OKR_BACKEND_SIGNING_SECRET=CHANGE_ME_STRONG_SIGNING_KEY
@@ -545,7 +545,7 @@ Assets broken under subpath:
 
 App fails at startup with database URL error:
 
-- Ensure `OKR_DATABASE_URL` uses `postgresql+psycopg2://` and points to `*.pooler.supabase.com:6543`.
+- Ensure `OKR_DATABASE_URL` uses `postgresql+psycopg://` and points to `*.pooler.supabase.com:6543`.
 - Ensure DSN user is `okr_app` (or equivalent least-privilege role), not `postgres`.
 
 Cannot log in:
