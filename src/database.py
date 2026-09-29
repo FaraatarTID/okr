@@ -642,7 +642,9 @@ def _reset_postgres_sequences(conn, table_names: list[str]) -> None:
         quoted_table = f'"{table_name}"'
         quoted_column = f'"{pk_col.name}"'
         next_value = conn.execute(
-            text(f"SELECT COALESCE(MAX({quoted_column}), 0) + 1 FROM {quoted_table}")
+            text(
+                f"SELECT COALESCE(MAX({quoted_column}), 0) + 1 FROM {quoted_table}"  # noqa: S608 - identifiers come from the SQLModel table metadata, not from input
+            )
         ).scalar()
         conn.execute(
             text("SELECT setval(CAST(:seq_name AS regclass), :next_value, false)"),

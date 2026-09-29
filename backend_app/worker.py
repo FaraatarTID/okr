@@ -109,7 +109,7 @@ def _run_job_with_lifecycle(kind: str, payload: dict) -> Any:
     def _target() -> None:
         try:
             outcome["result"] = run_job(kind, payload)
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001 - captured to be re-raised in the caller thread (`raise outcome["error"]`), including SystemExit and KeyboardInterrupt
             outcome["error"] = exc
         finally:
             finished.set()
@@ -251,7 +251,7 @@ def _safe_mark_job_failed(*, job_id: str, error_text: str, terminal: bool) -> No
             mark_job_failed_terminal(job_id, error_text)
         else:
             mark_job_failed(job_id, error_text)
-    except Exception:
+    except Exception:  # noqa: BLE001 - logged with traceback; a failed status write must not stop the worker loop
         _log_worker_event(
             "worker_job_failure_state_error",
             level="exception",
@@ -265,7 +265,7 @@ def process_next_job(*, worker_id: str) -> bool:
     worker_job_kind = "unknown"
     try:
         job = claim_next_pending_job(worker_id)
-    except Exception:
+    except Exception:  # noqa: BLE001 - logged with traceback; the loop retries on the next iteration
         _log_worker_event(
             "worker_claim_failed",
             level="exception",
@@ -304,7 +304,7 @@ def process_next_job(*, worker_id: str) -> bool:
                 shutdown_grace_seconds=_shutdown_grace_seconds(),
             )
             return True
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a job may raise anything; logged with traceback, the job is marked failed (terminal or retryable) and the worker keeps serving
             msg = f"{type(exc).__name__}: {exc}"
             duration_ms = (time.perf_counter() - started_at) * 1000
             _log_worker_event(
@@ -379,7 +379,7 @@ def process_next_job(*, worker_id: str) -> bool:
                     duration_ms=round(duration_ms, 3),
                     result_type=type(result).__name__ if result is not None else "none",
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - logged with traceback; the job is marked failed and retryable so it is not stuck RUNNING
             msg = f"{type(exc).__name__}: {exc}"
             duration_ms = (time.perf_counter() - started_at) * 1000
             _log_worker_event(
@@ -453,7 +453,7 @@ def run_worker_loop() -> None:
                         deleted_audit=deleted_audit,
                         retention_days=settings.audit_retention_days,
                     )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - housekeeping; logged with traceback and retried at the next prune interval
                 _log_worker_event(
                     "worker_prune_failed",
                     level="exception",
@@ -472,7 +472,7 @@ def run_worker_loop() -> None:
                             status="success",
                             reaped=reaped,
                         )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - housekeeping; logged with traceback and retried at the next prune interval
                     _log_worker_event(
                         "worker_zombie_reap_failed",
                         level="exception",
@@ -483,7 +483,7 @@ def run_worker_loop() -> None:
             try:
                 pending_jobs, running_jobs = get_job_queue_depth()
                 record_worker_queue_depth(pending=pending_jobs, running=running_jobs)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - queue-depth gauges are advisory; logged as a warning and the loop still claims jobs
                 _log_worker_event(
                     "worker_queue_depth_failed",
                     level="warning",
@@ -491,7 +491,7 @@ def run_worker_loop() -> None:
                     error_code=type(exc).__name__,
                 )
             handled = process_next_job(worker_id=worker_id)
-        except Exception:
+        except Exception:  # noqa: BLE001 - last-resort guard around one loop iteration; logged with traceback, sleeps, then continues so the worker does not die
             _log_worker_event(
                 "worker_loop_iteration_failed",
                 level="exception",
