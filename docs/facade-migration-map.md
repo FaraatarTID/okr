@@ -54,3 +54,5 @@ The compatibility delegation is now implemented for `_serialize_cycle`, `_serial
 - Import-boundary check passes.
 - Caller inventory shows no new direct facade imports.
 - The status ledger links the implementation and verification evidence.
+
+The ackend_app.main facade, a different surface from the retired root pp.py, is being retired module by module; its per-module status is in [compatibility-callers.md](compatibility-callers.md#backend_appmain-facade-p45-in-progress).
