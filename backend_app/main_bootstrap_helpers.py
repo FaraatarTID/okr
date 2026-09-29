@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from typing import Callable
 
@@ -9,8 +10,11 @@ from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 
 from src.config_runtime import get_bool_config, get_config_value
-from src.runtime_preflight import evaluate_runtime_preflight
+from src.runtime_preflight import evaluate_runtime_preflight, is_pdf_finding
+from src.services import pdf_service
 
+
+_LOGGER = logging.getLogger(__name__)
 
 _REQUIRED_MUTATION_ROUTES = {
     ("POST", "/v1/nodes/goal"),
@@ -28,19 +32,26 @@ def validate_runtime_preflight() -> None:
     }:
         return
 
+    # The PDF inputs are the real configuration. They used to be hard-coded to a healthy
+    # chromium setup, which made the PDF part of this check unable to fail.
     report = evaluate_runtime_preflight(
-        pdf_method="chromium",
-        has_pdfshift_key=True,
-        has_chromium_runtime=True,
+        pdf_method=pdf_service.get_pdf_method(),
+        has_pdfshift_key=pdf_service.has_pdfshift_api_key(),
+        has_chromium_runtime=pdf_service.is_chromium_runtime_available(),
         external_ai_allowed=False,
         backend_api_url="auto",
         deployment_profile=profile,
         data_access_mode=mode,
     )
-    if report.errors:
+    # A PDF renderer problem is reported, not fatal: the backend serves everything else
+    # without one and the export path already falls back. Everything else still fails boot.
+    for message in report.errors:
+        if is_pdf_finding(message):
+            _LOGGER.warning("Runtime preflight (PDF renderer): %s", message)
+    fatal = [error for error in report.errors if not is_pdf_finding(error)]
+    if fatal:
         raise RuntimeError(
-            "Runtime preflight failed:\n"
-            + "\n".join(f"- {error}" for error in report.errors)
+            "Runtime preflight failed:\n" + "\n".join(f"- {error}" for error in fatal)
         )
 
 
