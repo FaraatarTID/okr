@@ -14,7 +14,8 @@
     "verification": "spa-bff/test/rate_limit.test.ts (25 tests) against the working tree, mutation-checked. This is unit and in-process evidence. It is not a measurement on a deployed stack, and the ceilings were chosen, not measured.",
     "not_released": "The change is not in commit 8f13375 and not in the published release 6150b4ade9203a03fb2829155776d9aafec0f142 (checked 2026-09-29), so no released build exhibits it.",
     "limits": "State is per process: with N replicas the effective ceiling is N times the configured value, and it resets on restart. Authenticated /api/backend/* traffic is not limited at the BFF. The authoritative limits remain the backend's (OKR_BACKEND_RATE_LIMIT_* and the login lockout). Behaviour behind a real Nginx is untested.",
+    "superseded_by": "docs/evidence/security-parity-ef18d7f.json",
     "status_of_record": "pending",
-    "to_close": "Capture the 429 and Retry-After behaviour against the release that contains this change, then replace this file with that capture."
+    "to_close": "Done for release ef18d7f: see superseded_by. This file stays as the record of release-2026-09-14-bff and stays pending, because that release did not have the control."
   }
 }

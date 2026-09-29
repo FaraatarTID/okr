@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "release_id": "release-ef18d7f-bff",
+  "captured_at": "2026-09-29T16:04:41Z",
+  "operator": "automated capture by Claude Code at the repository owner's request (no named human operator)",
+  "topology": "bff",
+  "control": "csrf_and_origin_controls",
+  "status": "passed",
+  "observed": "7 of 7 checks passed. cross-site login is refused -> 403 INVALID_ORIGIN; login from a foreign Origin is refused -> 403 INVALID_ORIGIN; same-origin login passes the origin guard -> 401 AUTH_LOCKED_USER; cross-site state change with a valid session is refused -> 403 INVALID_ORIGIN; state change without the CSRF header is refused -> 403 INVALID_CSRF_TOKEN; state change with a wrong CSRF header is refused -> 403 INVALID_CSRF_TOKEN; state change with the matching CSRF header passes the CSRF gate -> 422 HTTP_422.",
+  "checks": [
+    {
+      "check": "cross-site login is refused",
+      "expected": "403 INVALID_ORIGIN",
+      "actual": "403 INVALID_ORIGIN",
+      "passed": true
+    },
+    {
+      "check": "login from a foreign Origin is refused",
+      "expected": "403 INVALID_ORIGIN",
+      "actual": "403 INVALID_ORIGIN",
+      "passed": true
+    },
+    {
+      "check": "same-origin login passes the origin guard",
+      "expected": "not INVALID_ORIGIN",
+      "actual": "401 AUTH_LOCKED_USER",
+      "passed": true
+    },
+    {
+      "check": "cross-site state change with a valid session is refused",
+      "expected": "403 INVALID_ORIGIN",
+      "actual": "403 INVALID_ORIGIN",
+      "passed": true
+    },
+    {
+      "check": "state change without the CSRF header is refused",
+      "expected": "403 INVALID_CSRF_TOKEN",
+      "actual": "403 INVALID_CSRF_TOKEN",
+      "passed": true
+    },
+    {
+      "check": "state change with a wrong CSRF header is refused",
+      "expected": "403 INVALID_CSRF_TOKEN",
+      "actual": "403 INVALID_CSRF_TOKEN",
+      "passed": true
+    },
+    {
+      "check": "state change with the matching CSRF header passes the CSRF gate",
+      "expected": "not INVALID_CSRF_TOKEN",
+      "actual": "422 HTTP_422",
+      "passed": true
+    }
+  ],
+  "capture_notes": [
+    "Stack: docker compose release overlay on this workstation, images pinned by digest from the release manifest of publish-ghcr.yml run 36591084086 (commit ef18d7f65e4f1ef8829cda3819fe49c8ba204cfa), digests verified by verify-ghcr-signatures run 36592028096. Disposable database and generated secrets.",
+    "Not a production or staging deployment: no real Nginx or TLS in front of it, and no real edge setting X-OKR-Client-IP.",
+    "The web origin was plain HTTP, so the Secure cookie attribute was not observed. session_cookie_protection covers HttpOnly, SameSite and a bounded lifetime only.",
+    "rate_limiting supplies its own X-OKR-Client-IP, standing in for the edge that sets it in a real deployment."
+  ]
+}

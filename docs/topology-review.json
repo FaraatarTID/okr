@@ -9,7 +9,7 @@
     "security_parity": {
       "status": "pending",
       "artifact": "evidence/security-parity.json",
-      "summary": "Reviewed session cookies, CSRF, actor binding, request signing, and route allowlisting, all of which passed. CSRF and origin controls are recorded as pending because only CSRF enforcement exists, and rate limiting is recorded as pending because no BFF-side limiter exists. The BFF itself remains the retained topology."
+      "summary": "Reviewed session cookies, CSRF, actor binding, request signing, and route allowlisting, all of which passed. CSRF and origin controls are recorded as pending because only CSRF enforcement exists, and rate limiting is recorded as pending because no BFF-side limiter exists. The BFF itself remains the retained topology. Superseded for the security-parity category only by docs/evidence/security-parity-ef18d7f.json (release ef18d7f, all six controls observed on a released stack). This review is not moved to that release, because failure isolation, resource overhead and rollback rehearsal were not recaptured for it."
     },
     "failure_isolation": {
       "status": "passed",

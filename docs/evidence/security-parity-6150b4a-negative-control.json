@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "release_id": "release-6150b4a-bff",
+  "captured_at": "2026-09-29T16:05:01Z",
+  "operator": "automated capture by Claude Code at the repository owner's request (no named human operator)",
+  "topology": "bff",
+  "capture_notes": [
+    "NEGATIVE CONTROL, not release evidence: the same probe against the PREVIOUS release (commit 6150b4ade9203a03fb2829155776d9aafec0f142, before the origin guard and the BFF rate limiter existed). Its purpose is to show the probe reports failure where a control is absent.",
+    "The web origin was plain HTTP, so the Secure cookie attribute was not observed. session_cookie_protection covers HttpOnly, SameSite and a bounded lifetime only.",
+    "rate_limiting supplies its own X-OKR-Client-IP, standing in for the edge that sets it in a real deployment."
+  ],
+  "controls": [
+    {
+      "name": "session_cookie_protection",
+      "status": "passed",
+      "observed": "6 of 6 checks passed. login succeeds -> 200; session cookie is issued -> present; session cookie is HttpOnly -> HttpOnly; session cookie is SameSite=Lax or Strict -> SameSite=Lax; session cookie has a bounded lifetime -> Max-Age=3600; CSRF cookie is issued -> present.",
+      "checks": [
+        {
+          "check": "login succeeds",
+          "expected": "200",
+          "actual": "200",
+          "passed": true
+        },
+        {
+          "check": "session cookie is issued",
+          "expected": "okr_spa_session present",
+          "actual": "present",
+          "passed": true
+        },
+        {
+          "check": "session cookie is HttpOnly",
+          "expected": "HttpOnly",
+          "actual": "HttpOnly",
+          "passed": true
+        },
+        {
+          "check": "session cookie is SameSite=Lax or Strict",
+          "expected": "SameSite=Lax|Strict",
+          "actual": "SameSite=Lax",
+          "passed": true
+        },
+        {
+          "check": "session cookie has a bounded lifetime",
+          "expected": "Max-Age > 0",
+          "actual": "Max-Age=3600",
+          "passed": true
+        },
+        {
+          "check": "CSRF cookie is issued",
+          "expected": "okr_csrf_token present",
+          "actual": "present",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "csrf_and_origin_controls",
+      "status": "failed",
+      "observed": "4 of 7 checks passed. cross-site login is refused -> 401 AUTH_LOCKED_USER (FAILED); login from a foreign Origin is refused -> 401 AUTH_LOCKED_USER (FAILED); same-origin login passes the origin guard -> 401 AUTH_LOCKED_USER; cross-site state change with a valid session is refused -> 422 HTTP_422 (FAILED); state change without the CSRF header is refused -> 403 INVALID_CSRF_TOKEN; state change with a wrong CSRF header is refused -> 403 INVALID_CSRF_TOKEN; state change with the matching CSRF header passes the CSRF gate -> 422 HTTP_422.",
+      "checks": [
+        {
+          "check": "cross-site login is refused",
+          "expected": "403 INVALID_ORIGIN",
+          "actual": "401 AUTH_LOCKED_USER",
+          "passed": false
+        },
+        {
+          "check": "login from a foreign Origin is refused",
+          "expected": "403 INVALID_ORIGIN",
+          "actual": "401 AUTH_LOCKED_USER",
+          "passed": false
+        },
+        {
+          "check": "same-origin login passes the origin guard",
+          "expected": "not INVALID_ORIGIN",
+          "actual": "401 AUTH_LOCKED_USER",
+          "passed": true
+        },
+        {
+          "check": "cross-site state change with a valid session is refused",
+          "expected": "403 INVALID_ORIGIN",
+          "actual": "422 HTTP_422",
+          "passed": false
+        },
+        {
+          "check": "state change without the CSRF header is refused",
+          "expected": "403 INVALID_CSRF_TOKEN",
+          "actual": "403 INVALID_CSRF_TOKEN",
+          "passed": true
+        },
+        {
+          "check": "state change with a wrong CSRF header is refused",
+          "expected": "403 INVALID_CSRF_TOKEN",
+          "actual": "403 INVALID_CSRF_TOKEN",
+          "passed": true
+        },
+        {
+          "check": "state change with the matching CSRF header passes the CSRF gate",
+          "expected": "not INVALID_CSRF_TOKEN",
+          "actual": "422 HTTP_422",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "actor_binding",
+      "status": "passed",
+      "observed": "2 of 2 checks passed. a client-supplied X-OKR-Actor that is not the session actor is refused -> 403 INVALID_ACTOR_HEADER; X-OKR-Actor equal to the session actor is accepted -> 422 HTTP_422.",
+      "checks": [
+        {
+          "check": "a client-supplied X-OKR-Actor that is not the session actor is refused",
+          "expected": "403 INVALID_ACTOR_HEADER",
+          "actual": "403 INVALID_ACTOR_HEADER",
+          "passed": true
+        },
+        {
+          "check": "X-OKR-Actor equal to the session actor is accepted",
+          "expected": "not INVALID_ACTOR_HEADER",
+          "actual": "422 HTTP_422",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "request_signing",
+      "status": "passed",
+      "observed": "4 of 4 checks passed. backend refuses a request with no service token -> 401 HTTP_401; backend refuses a wrong service token -> 401 HTTP_401; a valid token without signature headers is refused -> 401 Missing signed request headers.; a valid token with a forged signature is refused -> 401 Invalid request signature..",
+      "checks": [
+        {
+          "check": "backend refuses a request with no service token",
+          "expected": "401",
+          "actual": "401 HTTP_401",
+          "passed": true
+        },
+        {
+          "check": "backend refuses a wrong service token",
+          "expected": "401",
+          "actual": "401 HTTP_401",
+          "passed": true
+        },
+        {
+          "check": "a valid token without signature headers is refused",
+          "expected": "401 Missing signed request headers",
+          "actual": "401 Missing signed request headers.",
+          "passed": true
+        },
+        {
+          "check": "a valid token with a forged signature is refused",
+          "expected": "401 Invalid request signature",
+          "actual": "401 Invalid request signature.",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "route_allowlisting",
+      "status": "failed",
+      "observed": "2 of 3 checks passed. an unlisted GET route is refused -> 403 ROUTE_NOT_ALLOWLISTED; an unlisted POST route is refused -> 403 ROUTE_NOT_ALLOWLISTED; the removed /v1/state/{key} route is refused -> 401 MISSING_SESSION (FAILED).",
+      "checks": [
+        {
+          "check": "an unlisted GET route is refused",
+          "expected": "403 ROUTE_NOT_ALLOWLISTED",
+          "actual": "403 ROUTE_NOT_ALLOWLISTED",
+          "passed": true
+        },
+        {
+          "check": "an unlisted POST route is refused",
+          "expected": "403 ROUTE_NOT_ALLOWLISTED",
+          "actual": "403 ROUTE_NOT_ALLOWLISTED",
+          "passed": true
+        },
+        {
+          "check": "the removed /v1/state/{key} route is refused",
+          "expected": "403 ROUTE_NOT_ALLOWLISTED",
+          "actual": "401 MISSING_SESSION",
+          "passed": false
+        }
+      ]
+    },
+    {
+      "name": "rate_limiting",
+      "status": "failed",
+      "observed": "0 of 1 checks passed. the limiter answers within 120 attempts -> no 429 after 120 attempts (FAILED).",
+      "checks": [
+        {
+          "check": "the limiter answers within 120 attempts",
+          "expected": "429 RATE_LIMITED",
+          "actual": "no 429 after 120 attempts",
+          "passed": false
+        }
+      ]
+    }
+  ]
+}
