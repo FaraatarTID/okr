@@ -210,6 +210,55 @@ async def verify_service_credentials(
     return verified
 
 
+async def _consume_bucket(*, key: str, limit: int, window_seconds: int) -> None:
+    """Take one slot from a rate-limit bucket: 429 when exhausted, 503 when the store is down."""
+    try:
+        # The dependency chain is `async` because it awaits `request.body()`, and it is
+        # awaited on the event loop, so synchronous database work here blocks every
+        # concurrent request. The suite forces OKR_BACKEND_API_WORKERS=1, which makes
+        # that serialisation total. The calls below are therefore dispatched to the
+        # threadpool rather than turned into a `def` dependency, which is not possible
+        # while the body read must be awaited.
+        allowed = await run_in_threadpool(
+            check_rate_limit,
+            key=key,
+            limit=limit,
+            window_seconds=window_seconds,
+        )
+    except SecurityStateUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Security state backend is unavailable.",
+        ) from exc
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+
+
+async def apply_preauth_rate_limit(request: Request) -> None:
+    """Coarse per-peer bucket that runs BEFORE any credential is looked at.
+
+    Every request is counted, valid or not, so a caller guessing service tokens or
+    replaying signatures is refused with 429 before the token comparison and the HMAC
+    are computed. The key is the socket peer address, which is the only value the
+    caller cannot choose at this point: no header has been authenticated yet, so
+    `X-OKR-Client-IP` and `X-Forwarded-For` are both deliberately ignored here.
+
+    Behind the BFF the peer is the BFF itself, so this bucket counts every user's
+    traffic together and cannot tell one attacker from another. It is therefore a flood
+    guard sized far above the busiest legitimate aggregate, and it protects the backend
+    from a caller that reaches it directly; it is not a per-user limit. The per-client
+    limit in `apply_rate_limit` and the BFF's own limits do that job. The ceiling is
+    `OKR_BACKEND_PREAUTH_RATE_LIMIT_MAX_REQUESTS`.
+    """
+    settings = get_backend_settings()
+    peer = request.client.host if request.client else "unknown"
+    await _consume_bucket(
+        key=f"preauth:{peer}",
+        limit=settings.preauth_rate_limit_max_requests,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
+
+
 async def apply_rate_limit(request: Request, *, credentials_verified: bool) -> None:
     """Rate limit by client IP, taken only from a source the caller cannot choose.
 
@@ -242,26 +291,11 @@ async def apply_rate_limit(request: Request, *, credentials_verified: bool) -> N
             client_ip = trusted_client_ip
             request.state.trusted_client_ip = trusted_client_ip
 
-    try:
-        # The dependency chain is `async` because it awaits `request.body()`, and it is
-        # awaited on the event loop, so synchronous database work here blocks every
-        # concurrent request. The suite forces OKR_BACKEND_API_WORKERS=1, which makes
-        # that serialisation total. The calls below are therefore dispatched to the
-        # threadpool rather than turned into a `def` dependency, which is not possible
-        # while the body read must be awaited.
-        rl_ok = await run_in_threadpool(
-            check_rate_limit,
-            key=f"ip:{client_ip}",
-            limit=settings.rate_limit_max_requests,
-            window_seconds=settings.rate_limit_window_seconds,
-        )
-    except SecurityStateUnavailableError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Security state backend is unavailable.",
-        ) from exc
-    if not rl_ok:
-        raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+    await _consume_bucket(
+        key=f"ip:{client_ip}",
+        limit=settings.rate_limit_max_requests,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
 
 
 async def resolve_actor_scope(
@@ -397,10 +431,11 @@ async def require_service_access(
 ) -> None:
     """The one dependency every protected route binds.
 
-    It composes the steps below, and their ORDER is part of the contract: credentials
-    first, so nothing the caller says is trusted before it is verified; the rate limit
-    next, keyed on an address only a verified caller may influence; then the actor scope,
-    then the session, then the forwarded role claims against that scope.
+    It composes the steps below, and their ORDER is part of the contract: the coarse
+    per-peer bucket first, so a flood is refused before any credential work is done;
+    credentials next, so nothing the caller says is trusted before it is verified; the
+    per-client rate limit, keyed on an address only a verified caller may influence; then
+    the actor scope, then the session, then the forwarded role claims against that scope.
     """
     # This dependency is the first thing every protected request runs, so it is the
     # right place to start a clean per-request scope cache. Without this reset a
@@ -411,6 +446,7 @@ async def require_service_access(
 
     reset_request_scope_cache()
 
+    await apply_preauth_rate_limit(request)
     credentials_verified = await verify_service_credentials(
         request,
         service_token=x_okr_service_token,

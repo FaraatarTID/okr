@@ -18,7 +18,7 @@ from starlette.requests import Request
 
 from backend_app import security
 
-STEPS = ("credentials", "rate_limit", "scope", "session", "roles")
+STEPS = ("preauth", "credentials", "rate_limit", "scope", "session", "roles")
 
 
 def _request(
@@ -61,6 +61,9 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Replace every step with a recorder so only the composition is under test."""
     seen: list[str] = []
 
+    async def preauth(request: Request) -> None:
+        seen.append("preauth")
+
     async def credentials(request: Request, **_: Any) -> bool:
         seen.append("credentials")
         return True
@@ -78,6 +81,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     def roles(**_: Any) -> None:
         seen.append("roles")
 
+    monkeypatch.setattr(security, "apply_preauth_rate_limit", preauth)
     monkeypatch.setattr(security, "verify_service_credentials", credentials)
     monkeypatch.setattr(security, "apply_rate_limit", rate_limit)
     monkeypatch.setattr(security, "resolve_actor_scope", scope)
@@ -108,7 +112,7 @@ def test_the_steps_run_in_the_documented_order(calls: list[str]) -> None:
     assert calls == list(STEPS)
 
 
-@pytest.mark.parametrize("failing", STEPS[:4])
+@pytest.mark.parametrize("failing", STEPS[:5])
 def test_a_failing_step_stops_every_later_step(
     monkeypatch: pytest.MonkeyPatch, calls: list[str], failing: str
 ) -> None:
@@ -117,6 +121,7 @@ def test_a_failing_step_stops_every_later_step(
         raise HTTPException(status_code=401, detail="stop")
 
     name = {
+        "preauth": "apply_preauth_rate_limit",
         "credentials": "verify_service_credentials",
         "rate_limit": "apply_rate_limit",
         "scope": "resolve_actor_scope",
