@@ -129,8 +129,8 @@ def test_supabase_current_user_queries_include_token_version(monkeypatch, kind):
 
 
 def test_common_service_dependency_enforces_version_before_handler(monkeypatch):
+    import backend_app.scope_resolution as scopes
     import backend_app.security as security
-    import backend_app.main as backend_main
 
     monkeypatch.setenv("OKR_ENV", "development")
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
@@ -145,7 +145,7 @@ def test_common_service_dependency_enforces_version_before_handler(monkeypatch):
             raise HTTPException(status_code=401, detail="Session invalidated.")
         return {"role": "member", "actor_id": 7, "actor_username": actor}
 
-    monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", resolve)
+    monkeypatch.setattr(scopes, "_resolve_scope_for_actor", resolve)
     app = FastAPI()
 
     @app.get("/protected", dependencies=[Depends(security.require_service_access)])
@@ -177,15 +177,15 @@ def test_common_service_dependency_enforces_version_before_handler(monkeypatch):
 
 
 def test_common_service_dependency_fails_closed_when_account_lookup_breaks(monkeypatch):
+    import backend_app.scope_resolution as scopes
     import backend_app.security as security
-    import backend_app.main as backend_main
 
     monkeypatch.setenv("OKR_ENV", "development")
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "false")
     monkeypatch.setattr(security, "check_rate_limit", lambda **_kwargs: True)
     monkeypatch.setattr(
-        backend_main,
+        scopes,
         "_resolve_scope_for_actor",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("offline")),
     )
