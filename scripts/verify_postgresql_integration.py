@@ -65,6 +65,41 @@ def _run_compose(
     return _run_command(argv, cwd=ROOT, env=env)
 
 
+def _wait_for_postgres(
+    database_url: str,
+    timeout_seconds: int,
+    *,
+    connect=None,
+    sleep=time.sleep,
+    clock=time.time,
+) -> bool:
+    """Wait until PostgreSQL answers a query, not merely until the port accepts a socket.
+
+    Docker publishes the port through a proxy that accepts connections before the server inside
+    has finished its first-boot restart, so a TCP-only wait returns early and the first
+    connections fail with "server closed the connection unexpectedly". CI hit exactly that.
+    """
+    if connect is None:
+        from sqlalchemy import create_engine, text
+
+        def connect() -> None:
+            engine = create_engine(database_url, pool_pre_ping=False)
+            try:
+                with engine.connect() as connection:
+                    connection.execute(text("SELECT 1"))
+            finally:
+                engine.dispose()
+
+    deadline = clock() + timeout_seconds
+    while clock() < deadline:
+        try:
+            connect()
+            return True
+        except Exception:  # noqa: BLE001 - any failure means "not ready yet"; retried to the deadline
+            sleep(1.0)
+    return False
+
+
 def _wait_for_tcp(host: str, port: int, timeout_seconds: int) -> bool:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
@@ -100,6 +135,7 @@ def _run_postgres_smoke(*, args: argparse.Namespace) -> int:
 
     project = str(args.compose_project).strip() or "okr-postgres-integration"
     started_postgres = False
+    env: dict[str, str] | None = None
 
     if args.ensure_docker_service:
         selected_port = _available_port(args.postgres_host_port)
@@ -144,10 +180,19 @@ def _run_postgres_smoke(*, args: argparse.Namespace) -> int:
             raise RuntimeError(
                 "PostgreSQL service did not become reachable on configured host port."
             )
+        if not _wait_for_postgres(database_url, timeout_seconds=80):
+            raise RuntimeError(
+                "PostgreSQL accepted connections on the port but never answered a query."
+            )
 
         test_env = os.environ.copy()
         test_env["OKR_DATABASE_URL"] = database_url
         test_env["DATABASE_URL"] = database_url
+        # tests/conftest.py overwrites OKR_DATABASE_URL with sqlite at import, so the test module
+        # reads its DSN from this variable instead.
+        test_env["OKR_TEST_POSTGRES_URL"] = database_url
+        # This step exists to exercise PostgreSQL; a missing DSN must fail, not skip.
+        test_env["OKR_REQUIRE_TEST_POSTGRES_URL"] = "true"
         test_env["OKR_ALLOW_NON_SUPABASE_DB"] = "true"
         test_env["OKR_ENV"] = "development"
 
@@ -168,6 +213,7 @@ def _run_postgres_smoke(*, args: argparse.Namespace) -> int:
                 compose_file=compose_file,
                 compose_project=project,
                 command=["rm", "--stop", "--force", "--volumes", "postgres"],
+                env=env,
             )
             if down_code != 0:
                 print(f"[WARN] docker compose down returned {down_code}.")
