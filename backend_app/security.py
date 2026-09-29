@@ -164,28 +164,23 @@ async def _verify_request_signature(
     )
 
 
-async def require_service_access(
+async def verify_service_credentials(
     request: Request,
-    x_okr_actor: str | None = Header(default=None),
-    x_okr_role: str | None = Header(default=None),
-    x_okr_roles: str | None = Header(default=None),
-    x_okr_token_version: str | None = Header(default=None, include_in_schema=False),
-    x_okr_service_token: str | None = Header(default=None),
-    x_okr_signature: str | None = Header(default=None),
-    x_okr_timestamp: str | None = Header(default=None),
-    x_okr_nonce: str | None = Header(default=None),
-    x_okr_key_id: str | None = Header(default=None),
-) -> None:
-    settings = get_backend_settings()
-    # This dependency is the first thing every protected request runs, so it is the
-    # right place to start a clean per-request scope cache. Without this reset a
-    # recycled execution context could hand one actor's resolved scope to the next
-    # request, which would be an authorization leak rather than a performance bug.
-    # Imported lazily because scope_resolution imports from this module.
-    from backend_app.scope_resolution import reset_request_scope_cache
+    *,
+    service_token: str | None,
+    signature: str | None,
+    timestamp: str | None,
+    nonce: str | None,
+    key_id: str | None,
+) -> bool:
+    """Check the service token and the request signature, in that order.
 
-    reset_request_scope_cache()
-    service_token_valid = False
+    Returns True when at least one of the two enforced checks passed, meaning the
+    request is known to come from a trusted caller (the BFF). Returns False when neither
+    check is enforced, so nothing has been verified.
+    """
+    settings = get_backend_settings()
+    verified = False
 
     if settings.enforce_service_token:
         expected = settings.service_token
@@ -197,51 +192,58 @@ async def require_service_access(
                     "OKR_BACKEND_SERVICE_TOKEN is not configured."
                 ),
             )
-        supplied = str(x_okr_service_token or "").strip()
+        supplied = str(service_token or "").strip()
         if not supplied or not secrets.compare_digest(supplied, expected):
             raise HTTPException(status_code=401, detail="Unauthorized service token.")
-        service_token_valid = True
+        verified = True
 
     if settings.enforce_request_signing:
         await _verify_request_signature(
             request=request,
-            supplied_signature=x_okr_signature,
-            supplied_timestamp=x_okr_timestamp,
-            supplied_nonce=x_okr_nonce,
-            supplied_key_id=x_okr_key_id,
+            supplied_signature=signature,
+            supplied_timestamp=timestamp,
+            supplied_nonce=nonce,
+            supplied_key_id=key_id,
         )
-        service_token_valid = True
+        verified = True
 
-    # Rate limit by client IP, taken only from a source the caller cannot choose.
-    #
-    # `X-Forwarded-For` is deliberately NOT read here. `deploy/nginx.conf` sets it with
-    # `$proxy_add_x_forwarded_for`, which APPENDS to whatever the client sent, so its
-    # leftmost entry is caller-supplied. Keying on that entry let a caller rotate the
-    # rate-limit key per request and so bypass the limit while appearing to respect it.
-    # The private header below is overwritten at every hop and is honoured only on a
-    # request already authenticated as originating from the BFF. See
-    # docs/client-ip-trust-adr.md.
-    #
-    # The peer address stays as the fallback on purpose: with no trusted address this
-    # degrades to an aggregate limit over the proxy, which is undesirable but is still
-    # a limit, whereas dropping the key entirely would drop the control. The login
-    # lockout draws the opposite conclusion for the opposite reason - a shared bucket
-    # there would lock out every user, so it stays unkeyed (see api_auth_login).
-    # Publish the trusted address for dependents that cannot re-derive it, such as the
-    # login lockout (see api_auth_login). Fail-closed: a request whose service token and
-    # signature were both unverified publishes None, so the lockout's IP dimension stays
-    # inert rather than keying on a value a caller can choose.
+    return verified
+
+
+async def apply_rate_limit(request: Request, *, credentials_verified: bool) -> None:
+    """Rate limit by client IP, taken only from a source the caller cannot choose.
+
+    `X-Forwarded-For` is deliberately NOT read here. `deploy/nginx.conf` sets it with
+    `$proxy_add_x_forwarded_for`, which APPENDS to whatever the client sent, so its
+    leftmost entry is caller-supplied. Keying on that entry let a caller rotate the
+    rate-limit key per request and so bypass the limit while appearing to respect it.
+    The private header below is overwritten at every hop and is honoured only on a
+    request already authenticated as originating from the BFF. See
+    docs/client-ip-trust-adr.md.
+
+    The peer address stays as the fallback on purpose: with no trusted address this
+    degrades to an aggregate limit over the proxy, which is undesirable but is still
+    a limit, whereas dropping the key entirely would drop the control. The login
+    lockout draws the opposite conclusion for the opposite reason - a shared bucket
+    there would lock out every user, so it stays unkeyed (see api_auth_login).
+
+    Publishes the trusted address for dependents that cannot re-derive it, such as the
+    login lockout (see api_auth_login). Fail-closed: a request whose service token and
+    signature were both unverified publishes None, so the lockout's IP dimension stays
+    inert rather than keying on a value a caller can choose.
+    """
+    settings = get_backend_settings()
     request.state.trusted_client_ip = None
 
     client_ip = request.client.host if request.client else "unknown"
-    if service_token_valid:
+    if credentials_verified:
         trusted_client_ip = (request.headers.get("x-okr-client-ip") or "").strip()
         if trusted_client_ip:
             client_ip = trusted_client_ip
             request.state.trusted_client_ip = trusted_client_ip
 
     try:
-        # This dependency is `async` because it awaits `request.body()`, and it is
+        # The dependency chain is `async` because it awaits `request.body()`, and it is
         # awaited on the event loop, so synchronous database work here blocks every
         # concurrent request. The suite forces OKR_BACKEND_API_WORKERS=1, which makes
         # that serialisation total. The calls below are therefore dispatched to the
@@ -261,11 +263,24 @@ async def require_service_access(
     if not rl_ok:
         raise HTTPException(status_code=429, detail="Rate limit exceeded.")
 
+
+async def resolve_actor_scope(
+    request: Request,
+    *,
+    actor: str | None,
+    token_version: str | None,
+) -> dict | None:
+    """Require a signed actor where the route needs one, and resolve its current scope.
+
+    Returns None when the request carries no actor header. The scope is read from the
+    current account state and checked against the supplied token version, so a session
+    minted before an account change no longer resolves.
+    """
     route = request.scope.get("route")
     route_path = str(getattr(route, "path", "") or request.url.path or "")
     is_login = route_path in {"/v1/auth/login", "/api/v1/auth/login"}
     is_versioned_api = route_path.startswith(("/v1/", "/api/v1/"))
-    actor_header = str(x_okr_actor or "").strip()
+    actor_header = str(actor or "").strip()
     actor_bound = bool(actor_header) or (
         is_versioned_api
         and not is_login
@@ -275,82 +290,140 @@ async def require_service_access(
         raise HTTPException(
             status_code=401, detail="Actor-bound route requires a signed actor."
         )
+    if not actor_header:
+        return None
 
-    current_scope = None
-    if actor_header:
-        supplied_version = str(x_okr_token_version or "").strip()
-        if (
-            not supplied_version.isascii()
-            or not supplied_version.isdecimal()
-            or supplied_version.startswith("0")
-        ):
-            raise HTTPException(
-                status_code=401, detail="Valid session token version required."
-            )
-        token_version = int(supplied_version)
-        if token_version <= 0:
-            raise HTTPException(
-                status_code=401, detail="Valid session token version required."
-            )
-        try:
-            current_scope = await run_in_threadpool(
-                _resolve_current_actor_scope,
-                actor_header,
-                token_version,
-            )
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(
-                status_code=503, detail="Current account state is unavailable."
-            ) from exc
+    supplied_version = str(token_version or "").strip()
+    if (
+        not supplied_version.isascii()
+        or not supplied_version.isdecimal()
+        or supplied_version.startswith("0")
+    ):
+        raise HTTPException(
+            status_code=401, detail="Valid session token version required."
+        )
+    parsed_version = int(supplied_version)
+    if parsed_version <= 0:
+        raise HTTPException(
+            status_code=401, detail="Valid session token version required."
+        )
+    try:
+        return await run_in_threadpool(
+            _resolve_current_actor_scope,
+            actor_header,
+            parsed_version,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail="Current account state is unavailable."
+        ) from exc
 
-        raw_session_id = str(request.headers.get("x-okr-session-id") or "")
-        session_id = raw_session_id
-        raw_session_actor = str(request.headers.get("x-okr-session-actor") or "")
-        session_actor = raw_session_actor
-        if (
-            len(session_id) < 16
-            or len(session_id) > 512
-            or not session_id.isascii()
-            or any(ord(char) < 0x21 or ord(char) > 0x7E for char in session_id)
-            or raw_session_actor != raw_session_actor.strip()
-            or not session_actor
-        ):
-            raise HTTPException(
-                status_code=401, detail="Valid signed session assertions required."
-            )
-        actor_id = current_scope.get("actor_id") if current_scope else None
-        if actor_id is None:
-            raise HTTPException(
-                status_code=503, detail="Current account state is unavailable."
-            )
-        try:
-            resolved_actor_id = int(actor_id)
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(
-                status_code=503, detail="Current account state is unavailable."
-            ) from exc
-        if resolved_actor_id <= 0 or session_actor != str(resolved_actor_id):
-            raise HTTPException(status_code=401, detail="Session actor mismatch.")
-        try:
-            session_status = await run_in_threadpool(
-                check_session,
-                session_digest=hashlib.sha256(session_id.encode("utf-8")).hexdigest(),
-                actor_id=str(resolved_actor_id),
-                now=datetime.now(timezone.utc),
-            )
-        except SecurityStateUnavailableError as exc:
-            raise HTTPException(
-                status_code=503, detail="Session verification is unavailable."
-            ) from exc
-        except Exception as exc:
-            raise HTTPException(
-                status_code=503, detail="Session verification is unavailable."
-            ) from exc
-        if session_status != "active":
-            raise HTTPException(status_code=401, detail="Session is not active.")
 
+async def verify_session(
+    request: Request,
+    *,
+    actor: str | None,
+    scope: dict | None,
+) -> None:
+    """Check the signed session assertions and that the session is still active.
+
+    Does nothing for a request with no actor. For an actor, the session id and session
+    actor must be well formed, the session actor must equal the resolved account id, and
+    the session registry must report the session as active.
+    """
+    if not str(actor or "").strip():
+        return
+
+    raw_session_id = str(request.headers.get("x-okr-session-id") or "")
+    session_id = raw_session_id
+    raw_session_actor = str(request.headers.get("x-okr-session-actor") or "")
+    session_actor = raw_session_actor
+    if (
+        len(session_id) < 16
+        or len(session_id) > 512
+        or not session_id.isascii()
+        or any(ord(char) < 0x21 or ord(char) > 0x7E for char in session_id)
+        or raw_session_actor != raw_session_actor.strip()
+        or not session_actor
+    ):
+        raise HTTPException(
+            status_code=401, detail="Valid signed session assertions required."
+        )
+    actor_id = scope.get("actor_id") if scope else None
+    if actor_id is None:
+        raise HTTPException(
+            status_code=503, detail="Current account state is unavailable."
+        )
+    try:
+        resolved_actor_id = int(actor_id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503, detail="Current account state is unavailable."
+        ) from exc
+    if resolved_actor_id <= 0 or session_actor != str(resolved_actor_id):
+        raise HTTPException(status_code=401, detail="Session actor mismatch.")
+    try:
+        session_status = await run_in_threadpool(
+            check_session,
+            session_digest=hashlib.sha256(session_id.encode("utf-8")).hexdigest(),
+            actor_id=str(resolved_actor_id),
+            now=datetime.now(timezone.utc),
+        )
+    except SecurityStateUnavailableError as exc:
+        raise HTTPException(
+            status_code=503, detail="Session verification is unavailable."
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail="Session verification is unavailable."
+        ) from exc
+    if session_status != "active":
+        raise HTTPException(status_code=401, detail="Session is not active.")
+
+
+async def require_service_access(
+    request: Request,
+    x_okr_actor: str | None = Header(default=None),
+    x_okr_role: str | None = Header(default=None),
+    x_okr_roles: str | None = Header(default=None),
+    x_okr_token_version: str | None = Header(default=None, include_in_schema=False),
+    x_okr_service_token: str | None = Header(default=None),
+    x_okr_signature: str | None = Header(default=None),
+    x_okr_timestamp: str | None = Header(default=None),
+    x_okr_nonce: str | None = Header(default=None),
+    x_okr_key_id: str | None = Header(default=None),
+) -> None:
+    """The one dependency every protected route binds.
+
+    It composes the steps below, and their ORDER is part of the contract: credentials
+    first, so nothing the caller says is trusted before it is verified; the rate limit
+    next, keyed on an address only a verified caller may influence; then the actor scope,
+    then the session, then the forwarded role claims against that scope.
+    """
+    # This dependency is the first thing every protected request runs, so it is the
+    # right place to start a clean per-request scope cache. Without this reset a
+    # recycled execution context could hand one actor's resolved scope to the next
+    # request, which would be an authorization leak rather than a performance bug.
+    # Imported lazily because scope_resolution imports from this module.
+    from backend_app.scope_resolution import reset_request_scope_cache
+
+    reset_request_scope_cache()
+
+    credentials_verified = await verify_service_credentials(
+        request,
+        service_token=x_okr_service_token,
+        signature=x_okr_signature,
+        timestamp=x_okr_timestamp,
+        nonce=x_okr_nonce,
+        key_id=x_okr_key_id,
+    )
+    await apply_rate_limit(request, credentials_verified=credentials_verified)
+    current_scope = await resolve_actor_scope(
+        request, actor=x_okr_actor, token_version=x_okr_token_version
+    )
+    await verify_session(request, actor=x_okr_actor, scope=current_scope)
     await run_in_threadpool(
         validate_forwarded_role_claims,
         actor=x_okr_actor,
