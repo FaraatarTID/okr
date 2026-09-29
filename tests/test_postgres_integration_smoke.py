@@ -12,10 +12,31 @@ from sqlalchemy.exc import IntegrityError
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]
 
 
+DSN_ENV = "OKR_TEST_POSTGRES_URL"
+REQUIRE_DSN_ENV = "OKR_REQUIRE_TEST_POSTGRES_URL"
+
+
 def _require_postgres_url() -> str:
-    value = (os.getenv("OKR_DATABASE_URL") or os.getenv("DATABASE_URL") or "").strip()
+    """Read the DSN from a variable tests/conftest.py does not overwrite.
+
+    This used to read OKR_DATABASE_URL, which conftest sets to sqlite:///:memory: at import,
+    so the tests skipped in every run, CI included, and never touched PostgreSQL.
+    """
+    value = (os.getenv(DSN_ENV) or "").strip()
     if not value.lower().startswith("postgresql+psycopg2://"):
-        pytest.skip("PostgreSQL DSN required for PostgreSQL integration smoke test.")
+        if (os.getenv(REQUIRE_DSN_ENV) or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            raise RuntimeError(
+                f"{DSN_ENV} must be a postgresql+psycopg2:// DSN when "
+                f"{REQUIRE_DSN_ENV}=true; the PostgreSQL smoke test cannot skip."
+            )
+        pytest.skip(
+            f"{DSN_ENV} must be a PostgreSQL DSN for the integration smoke test."
+        )
     return value
 
 
@@ -108,12 +129,23 @@ def test_postgres_migrations_are_idempotent_and_schema_is_present(monkeypatch) -
     assert "auth_throttle_state" in tables
 
 
+# alembic_version is deliberately absent: scripts/check_rls_enabled.py EXCLUDED_TABLES treats it as
+# migration metadata where RLS is meaningless. This list asserted it as enabled, which was never
+# true on a migrated database; it went unnoticed because the whole module skipped (see above).
 def test_postgres_rls_flags_for_security_hardened_tables(monkeypatch) -> None:
     _configure_database_for_postgres(monkeypatch=monkeypatch)
 
     import src.database as database
+    from backend_app.security_state import DatabaseSecurityStateStore
 
     database.run_migrations()
+    # The four backend_* tables are not migration-managed: the backend creates them, with RLS,
+    # on first use. Do the same here so this test does not depend on what ran before it.
+    store = DatabaseSecurityStateStore(database_url=_require_postgres_url())
+    try:
+        store._ensure_schema()
+    finally:
+        store.dispose()
     _assert_rls_is_enabled(
         database.get_engine(),
         [
@@ -121,7 +153,6 @@ def test_postgres_rls_flags_for_security_hardened_tables(monkeypatch) -> None:
             "alignment_edge",
             "experiment",
             "retro_experiment_outcome",
-            "alembic_version",
             "user",
             "auth_throttle_state",
             "goal",
@@ -211,12 +242,14 @@ def test_postgres_locking_and_constraint_behavior(monkeypatch) -> None:
 
     with database.get_engine().connect() as conn:
         value = conn.execute(
-            text("SELECT pg_advisory_lock(hashtext(:lock_name))"),
+            text("SELECT pg_try_advisory_lock(hashtext(:lock_name))"),
             {"lock_name": "okr-postgres-integration-lock"},
         ).scalar()
-        assert value in (True, False)
+        assert (
+            value is True
+        )  # pg_advisory_lock returns void (an empty string), which proved nothing
         released = conn.execute(
             text("SELECT pg_advisory_unlock(hashtext(:lock_name))"),
             {"lock_name": "okr-postgres-integration-lock"},
         ).scalar()
-        assert released in (True, False)
+        assert released is True

@@ -148,6 +148,11 @@ def _run_postgres_smoke(*, args: argparse.Namespace) -> int:
         test_env = os.environ.copy()
         test_env["OKR_DATABASE_URL"] = database_url
         test_env["DATABASE_URL"] = database_url
+        # tests/conftest.py overwrites OKR_DATABASE_URL with sqlite at import, so the test module
+        # reads its DSN from this variable instead.
+        test_env["OKR_TEST_POSTGRES_URL"] = database_url
+        # This step exists to exercise PostgreSQL; a missing DSN must fail, not skip.
+        test_env["OKR_REQUIRE_TEST_POSTGRES_URL"] = "true"
         test_env["OKR_ALLOW_NON_SUPABASE_DB"] = "true"
         test_env["OKR_ENV"] = "development"
 
