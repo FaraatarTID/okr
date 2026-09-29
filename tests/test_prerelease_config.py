@@ -20,7 +20,7 @@ def _valid_runtime_env() -> dict[str, str]:
         "OKR_ENVIRONMENT_ID": "okr-prerelease",
         "OKR_CUSTOMER_ID": "synthetic-prerelease",
         "OKR_DATABASE_URL": (
-            "postgresql+psycopg2://okr_app:synthetic-password@"
+            "postgresql+psycopg://okr_app:synthetic-password@"
             "okr-prerelease-postgres.internal:5432/okr"
         ),
         "OKR_BACKUP_PROVIDER": "deferred",
@@ -86,7 +86,7 @@ def test_rejects_non_saas_profile_and_non_database_mode() -> None:
 
 def test_rejects_public_database_and_production_identity() -> None:
     env = _valid_runtime_env()
-    env["OKR_DATABASE_URL"] = "postgresql+psycopg2://okr:pw@db.example.com:5432/okr"
+    env["OKR_DATABASE_URL"] = "postgresql+psycopg://okr:pw@db.example.com:5432/okr"
     env["OKR_ENVIRONMENT_ID"] = "production"
 
     report = validate_prerelease_config(env, runtime=True)

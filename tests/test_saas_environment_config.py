@@ -26,7 +26,7 @@ def _saas_env() -> dict[str, str]:
         "OKR_ENVIRONMENT_ID": "env-a",
         "OKR_CUSTOMER_ID": "customer-a",
         "OKR_DATA_ACCESS_MODE": "database",
-        "OKR_DATABASE_URL": "postgresql+psycopg2://okr:secret@db:5432/okr",
+        "OKR_DATABASE_URL": "postgresql+psycopg://okr:secret@db:5432/okr",
         "OKR_HEALTH_URL": "http://backend-api:8100/healthz",
         "OKR_BACKUP_PROVIDER": "provider-managed",
         "OKR_BACKUP_SCHEDULE": "daily",
@@ -208,7 +208,7 @@ def test_empty_self_hosted_database_remains_compatible_with_local_default():
 
     assert report.ok
     assert (
-        "OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}"
+        "OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg://okr:okr_dev_password@postgres:5432/okr}"
         in compose
     )
 
@@ -267,10 +267,10 @@ def test_compose_preserves_explicit_empty_database_url():
     compose = COMPOSE_FILE.read_text(encoding="utf-8")
 
     assert (
-        "OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}"
+        "OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg://okr:okr_dev_password@postgres:5432/okr}"
         in compose
     )
     assert (
-        "OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}"
+        "OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg://okr:okr_dev_password@postgres:5432/okr}"
         not in compose
     )

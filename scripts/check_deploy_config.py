@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 try:
+    from src.db_url import has_explicit_postgres_driver  # noqa: E402
     from src.saas.environment_config import ConfigError, SaaSEnvironmentConfig  # noqa: E402
 except ModuleNotFoundError as exc:
     raise ModuleNotFoundError(
@@ -162,9 +163,10 @@ def _validate_database_url(url: str, report: ValidationReport, *, strict: bool) 
             report.errors.append("OKR_DATABASE_URL is required and cannot be empty.")
         return
 
-    if not raw.startswith("postgresql+psycopg2://"):
+    if not has_explicit_postgres_driver(raw):
         report.errors.append(
-            "OKR_DATABASE_URL must start with 'postgresql+psycopg2://'."
+            "OKR_DATABASE_URL must start with 'postgresql+psycopg://' "
+            "('postgresql+psycopg2://' is still accepted)."
         )
         return
 

@@ -610,7 +610,7 @@ macOS/Linux bash:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r backend_app/requirements.txt
-export OKR_DATABASE_URL='postgresql+psycopg2://...'
+export OKR_DATABASE_URL='postgresql+psycopg://...'
 python -m backend_app.run_api &
 python -m backend_app.worker &
 npm --prefix spa-bff install && npm --prefix spa-bff run dev &

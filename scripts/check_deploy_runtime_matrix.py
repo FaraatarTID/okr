@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class RuntimeScenario:
     name: str
     db_url: str = (
-        "postgresql+psycopg2://okr:okr_ci_pass_2026@postgres:5432/okr?sslmode=require"
+        "postgresql+psycopg://okr:okr_ci_pass_2026@postgres:5432/okr?sslmode=require"
     )
     backend_api_url: str = "http://backend-api:8100"
     pdf_method: str = "chromium"

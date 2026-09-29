@@ -39,7 +39,7 @@ def _runtime_environment() -> tuple[dict[str, str], str]:
             "OKR_DEPLOYMENT_PROFILE": "on_premise",
             "OKR_DATA_ACCESS_MODE": "database",
             "OKR_ALLOW_NON_SUPABASE_DB": "true",
-            "OKR_DATABASE_URL": "postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr",
+            "OKR_DATABASE_URL": "postgresql+psycopg://okr:okr_dev_password@postgres:5432/okr",
             "OKR_POSTGRES_USER": "okr",
             "OKR_POSTGRES_PASSWORD": "okr_dev_password",
             "OKR_POSTGRES_DB": "okr",

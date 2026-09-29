@@ -112,7 +112,7 @@ if not exist "%PYEXE%" (
     )
 )
 
-"%PYEXE%" -c "import fastapi,uvicorn,sqlmodel,psycopg2" >nul 2>&1
+"%PYEXE%" -c "import fastapi,uvicorn,sqlmodel,psycopg" >nul 2>&1
 if errorlevel 1 (
     echo [INFO] Installing Python dependencies...
     "%PYEXE%" -m pip install -r "backend_app\requirements.txt"

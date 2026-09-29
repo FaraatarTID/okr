@@ -77,7 +77,7 @@ def test_wait_for_postgres_retries_until_a_query_succeeds():
             raise OSError("server closed the connection unexpectedly")
 
     assert _wait_for_postgres(
-        "postgresql+psycopg2://x",
+        "postgresql+psycopg://x",
         30,
         connect=connect,
         sleep=clock.sleep,
@@ -96,7 +96,7 @@ def test_wait_for_postgres_gives_up_at_the_deadline():
         raise OSError("never ready")
 
     assert not _wait_for_postgres(
-        "postgresql+psycopg2://x",
+        "postgresql+psycopg://x",
         5,
         connect=connect,
         sleep=clock.sleep,

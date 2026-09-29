@@ -138,7 +138,7 @@ jobs:
           --health-retries 10
 
     env:
-      OKR_DATABASE_URL: postgresql+psycopg2://okr:okr@localhost:5432/okr
+      OKR_DATABASE_URL: postgresql+psycopg://okr:okr@localhost:5432/okr
       OKR_ALLOW_NON_SUPABASE_DB: "true"
 
     steps:
@@ -213,11 +213,11 @@ jobs:
     env:
       # Deliberately not OKR_DATABASE_URL: tests/conftest.py:19-20 overwrites that with
       # sqlite:///:memory: at import, so it can never carry a DSN to the tests.
-      OKR_TEST_POSTGRES_URL: postgresql+psycopg2://okr:okr@localhost:5432/okr
+      OKR_TEST_POSTGRES_URL: postgresql+psycopg://okr:okr@localhost:5432/okr
       # This job promises real PostgreSQL coverage, so missing service wiring must fail
       # the budget tests instead of silently turning their measurement into a skip.
       OKR_REQUIRE_TEST_POSTGRES_URL: "true"
-      OKR_TEST_PGBOUNCER_URL: postgresql+psycopg2://okr:okr@localhost:6543/okr
+      OKR_TEST_PGBOUNCER_URL: postgresql+psycopg://okr:okr@localhost:6543/okr
       OKR_REQUIRE_TEST_PGBOUNCER_URL: "true"
       OKR_TEST_REDIS_URL: redis://127.0.0.1:6379/0
       OKR_REQUIRE_T23_PROCESS_DRILL: "true"
@@ -255,12 +255,12 @@ jobs:
             pgbouncer/pgbouncer:1.25.2@sha256:c0c55b277858ca308eb5df7baf8b83fbaea60b2c666604f29d8fe25e9decac68 \
             /etc/pgbouncer/pgbouncer.ini
           for attempt in {1..30}; do
-            if python -c 'import os, psycopg2; c=psycopg2.connect(os.environ["OKR_TEST_PGBOUNCER_URL"].replace("postgresql+psycopg2://", "postgresql://")); c.cursor().execute("SELECT 1"); c.close()' 2>/dev/null; then
+            if python -c 'import os, psycopg; c=psycopg.connect(os.environ["OKR_TEST_PGBOUNCER_URL"].replace("postgresql+psycopg://", "postgresql://")); c.execute("SELECT 1"); c.close()' 2>/dev/null; then
               break
             fi
             sleep 1
           done
-          python -c 'import os, psycopg2; c=psycopg2.connect(os.environ["OKR_TEST_PGBOUNCER_URL"].replace("postgresql+psycopg2://", "postgresql://")); c.cursor().execute("SELECT 1"); c.close()'
+          python -c 'import os, psycopg; c=psycopg.connect(os.environ["OKR_TEST_PGBOUNCER_URL"].replace("postgresql+psycopg://", "postgresql://")); c.execute("SELECT 1"); c.close()'
 
       - name: Install Python security tooling
         run: uv pip install --python "$GITHUB_WORKSPACE/.venv/bin/python" pip-audit

@@ -64,7 +64,7 @@ def test_seed_is_idempotent_and_creates_minimal_hierarchy(isolated_db) -> None:
 
 
 def test_seed_rejects_production_like_environment() -> None:
-    environment = _environment("postgresql+psycopg2://okr@postgres/okr")
+    environment = _environment("postgresql+psycopg://okr@postgres/okr")
     environment["OKR_ENV"] = "production"
 
     with pytest.raises(seed_dev_demo.SeedConfigError, match="production-like"):

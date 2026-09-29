@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass
 from typing import Mapping
 
+from src.db_url import has_explicit_postgres_driver
+
 from src.saas.environment_contract import normalize_deployment_profile
 from src.saas.identity_contract import load_enterprise_identity_config
 
@@ -67,9 +69,10 @@ class SaaSEnvironmentConfig:
                 )
 
         database_url = _required(values, "OKR_DATABASE_URL")
-        if not database_url.startswith("postgresql+psycopg2://"):
+        if not has_explicit_postgres_driver(database_url):
             raise ConfigError(
-                "OKR_DATABASE_URL must use the postgresql+psycopg2:// scheme"
+                "OKR_DATABASE_URL must use the postgresql+psycopg:// scheme "
+                "(postgresql+psycopg2:// is still accepted)"
             )
 
         identity_config = load_enterprise_identity_config(values)

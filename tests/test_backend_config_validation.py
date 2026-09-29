@@ -19,7 +19,7 @@ def _set_production_env(monkeypatch) -> None:
     )
     monkeypatch.setenv(
         "OKR_DATABASE_URL",
-        "postgresql+psycopg2://user:pass@db.example.com:6543/main",
+        "postgresql+psycopg://user:pass@db.example.com:6543/main",
     )
 
 

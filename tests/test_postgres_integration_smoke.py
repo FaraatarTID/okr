@@ -23,7 +23,7 @@ def _require_postgres_url() -> str:
     so the tests skipped in every run, CI included, and never touched PostgreSQL.
     """
     value = (os.getenv(DSN_ENV) or "").strip()
-    if not value.lower().startswith("postgresql+psycopg2://"):
+    if not value.lower().startswith("postgresql+psycopg://"):
         if (os.getenv(REQUIRE_DSN_ENV) or "").strip().lower() in {
             "1",
             "true",
@@ -31,7 +31,7 @@ def _require_postgres_url() -> str:
             "on",
         }:
             raise RuntimeError(
-                f"{DSN_ENV} must be a postgresql+psycopg2:// DSN when "
+                f"{DSN_ENV} must be a postgresql+psycopg:// DSN when "
                 f"{REQUIRE_DSN_ENV}=true; the PostgreSQL smoke test cannot skip."
             )
         pytest.skip(

@@ -23,7 +23,7 @@ def test_backend_quality_starts_pinned_pooler_with_mounted_transaction_config():
     assert job["env"]["OKR_REQUIRE_TEST_PGBOUNCER_URL"] == "true"
     pooler_url = urlsplit(job["env"]["OKR_TEST_PGBOUNCER_URL"])
     postgres_url = urlsplit(job["env"]["OKR_TEST_POSTGRES_URL"])
-    assert pooler_url.scheme == "postgresql+psycopg2"
+    assert pooler_url.scheme == "postgresql+psycopg"
     assert pooler_url.hostname == "localhost" and pooler_url.port == 6543
     assert postgres_url.hostname == "localhost" and postgres_url.port == 5432
     assert pooler_url.path == postgres_url.path == "/okr"

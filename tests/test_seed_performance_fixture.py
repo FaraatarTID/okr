@@ -27,7 +27,7 @@ def test_seed_requires_explicit_opt_in_before_opening_database(monkeypatch) -> N
             [],
             environ={
                 "OKR_DATA_ACCESS_MODE": "database",
-                "OKR_DATABASE_URL": "postgresql+psycopg2://okr:pw@localhost/okr",
+                "OKR_DATABASE_URL": "postgresql+psycopg://okr:pw@localhost/okr",
                 "OKR_BOOTSTRAP_ADMIN_PASSWORD": "Not-used-1234!",
             },
         )
@@ -47,7 +47,7 @@ def test_seed_rejects_supabase_api_mode_before_opening_database(monkeypatch) -> 
             ["--confirm-disposable"],
             environ={
                 "OKR_DATA_ACCESS_MODE": "supabase_api",
-                "OKR_DATABASE_URL": "postgresql+psycopg2://okr:pw@localhost/okr",
+                "OKR_DATABASE_URL": "postgresql+psycopg://okr:pw@localhost/okr",
                 "OKR_BOOTSTRAP_ADMIN_PASSWORD": "Not-used-1234!",
             },
         )
@@ -67,7 +67,7 @@ def test_seed_requires_password_from_environment(monkeypatch) -> None:
             ["--confirm-disposable"],
             environ={
                 "OKR_DATA_ACCESS_MODE": "database",
-                "OKR_DATABASE_URL": "postgresql+psycopg2://okr:pw@localhost/okr",
+                "OKR_DATABASE_URL": "postgresql+psycopg://okr:pw@localhost/okr",
             },
         )
 

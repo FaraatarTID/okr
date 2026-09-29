@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlparse
 
+from src.db_url import has_explicit_postgres_driver
 from scripts.check_deploy_config import (
     ROOT,
     ValidationReport,
@@ -107,7 +108,7 @@ def _validate_private_database_url(
     value: object, report: ValidationReport, *, runtime: bool
 ) -> None:
     raw = str(value or "").strip()
-    if not raw.startswith("postgresql+psycopg2://"):
+    if not has_explicit_postgres_driver(raw):
         return
 
     parsed = urlparse(raw)

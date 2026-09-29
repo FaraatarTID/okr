@@ -333,7 +333,7 @@ PowerShell example:
 # Use the separate Compose project/ports described in the dedicated-Postgres
 # runbook; do not source deploy/docker/.env.
 $env:OKR_DATA_ACCESS_MODE = "database"
-$env:OKR_DATABASE_URL = "postgresql+psycopg2://okr:okr_dev_password@127.0.0.1:15433/okr"
+$env:OKR_DATABASE_URL = "postgresql+psycopg://okr:okr_dev_password@127.0.0.1:15433/okr"
 $env:OKR_BOOTSTRAP_ADMIN_PASSWORD = "<strong-local-only-password>"
 python scripts/seed_performance_fixture.py --confirm-disposable
 python scripts/slo_probe.py --base-url http://127.0.0.1:13000 --username perf-fixture-admin --password $env:OKR_BOOTSTRAP_ADMIN_PASSWORD

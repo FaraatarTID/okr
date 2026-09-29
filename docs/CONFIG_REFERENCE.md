@@ -14,9 +14,14 @@ Database
   - OKR_DATABASE_URL (recommended)
   - DATABASE_URL (optional alias)
   - Example:
-    - `postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
+    - `postgresql+psycopg://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
 - Runtime validation behavior:
-  - URL must start with `postgresql+psycopg2://` (or `sqlite:///` for local/test only).
+  - URL must start with `postgresql+psycopg://` (or `sqlite:///` for local/test only). Existing
+    `postgresql+psycopg2://`, `postgresql://` and `postgres://` values are still accepted and rewritten to
+    `postgresql+psycopg://` at startup, so a deployed `.env` does not need to change with the driver. Production
+    validation requires an explicit driver (`+psycopg` or `+psycopg2`), not a bare `postgresql://`.
+  - The driver is psycopg 3. Every engine is created with `prepare_threshold=None` so a transaction-mode pooler
+    (PgBouncer) without prepared-statement support works; see `src/db_url.py`.
   - PostgreSQL URLs must include a host.
 - Runtime DB URL strictness flags:
   - `OKR_ALLOW_NON_SUPABASE_DB` (default: `1`)

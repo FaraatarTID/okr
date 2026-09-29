@@ -10,7 +10,10 @@ dependencies = [
     "fastapi==0.138.0",
     "google-genai==1.61.0",
     "httpx==0.28.1",
-    "psycopg2-binary==2.9.12",
+    "psycopg==3.3.6",
+    # Equivalent to psycopg[binary]; the two are pinned to the same version by hand because the
+    # manifest tooling only understands plain name==version pins. psycopg-binary must move with psycopg.
+    "psycopg-binary==3.3.6",
     "pydantic==2.13.4",
     "python-dotenv==1.2.2",
     "redis==5.2.1",

@@ -4,7 +4,7 @@ Why a second file rather than parameters on the SQLite one
 ----------------------------------------------------------
 `tests/test_read_path_budget.py` measures statements and connections on SQLite, where
 `NullPool` is not used at all (`src/database.py:146-151` applies it only to
-`postgresql+psycopg2://`). That means the SQLite measurement cannot show the cost that
+`postgresql+psycopg://`). That means the SQLite measurement cannot show the cost that
 dominates production: a fresh physical connection per checkout, each one a TCP + TLS +
 auth handshake. On PostgreSQL the same code path opens and closes real connections, and
 the counters finally mean what the plan claims they mean.
@@ -47,7 +47,7 @@ def _pgbouncer_url() -> str:
     value = (os.getenv(POOLER_DSN_ENV) or "").strip()
     parsed = urlsplit(value)
     if (
-        parsed.scheme != "postgresql+psycopg2"
+        parsed.scheme != "postgresql+psycopg"
         or not parsed.hostname
         or not parsed.path.strip("/")
     ):
@@ -58,7 +58,7 @@ def _pgbouncer_url() -> str:
             "on",
         }:
             raise RuntimeError(
-                f"{POOLER_DSN_ENV} must be set to a postgresql+psycopg2:// DSN "
+                f"{POOLER_DSN_ENV} must be set to a postgresql+psycopg:// DSN "
                 f"when {REQUIRE_POOLER_DSN_ENV}=true; PgBouncer budget tests cannot skip."
             )
         pytest.skip(
@@ -67,7 +67,7 @@ def _pgbouncer_url() -> str:
     return value
 
 
-@pytest.mark.parametrize("dsn", [None, "sqlite:///:memory:", "postgresql+psycopg2://"])
+@pytest.mark.parametrize("dsn", [None, "sqlite:///:memory:", "postgresql+psycopg://"])
 def test_required_pgbouncer_dsn_fails_closed(monkeypatch, dsn):
     monkeypatch.setenv(REQUIRE_POOLER_DSN_ENV, "true")
     if dsn is None:
@@ -90,7 +90,7 @@ def _build_postgres_budget_client(client, *, actor_id: int | None = None):
 
 def _postgres_url() -> str:
     value = (os.getenv(DSN_ENV) or "").strip()
-    if not value.lower().startswith("postgresql+psycopg2://"):
+    if not value.lower().startswith("postgresql+psycopg://"):
         if (os.getenv(REQUIRE_DSN_ENV) or "").strip().lower() in {
             "1",
             "true",
@@ -98,11 +98,11 @@ def _postgres_url() -> str:
             "on",
         }:
             raise RuntimeError(
-                f"{DSN_ENV} must be set to a postgresql+psycopg2:// DSN "
+                f"{DSN_ENV} must be set to a postgresql+psycopg:// DSN "
                 f"when {REQUIRE_DSN_ENV}=true; PostgreSQL budget tests cannot skip."
             )
         pytest.skip(
-            f"{DSN_ENV} must be a postgresql+psycopg2:// DSN to measure the "
+            f"{DSN_ENV} must be a postgresql+psycopg:// DSN to measure the "
             "production connection cost; unset means these budgets are unmeasured."
         )
     return value
@@ -317,14 +317,15 @@ def _replace_database(url: str, database_name: str) -> str:
 
 def _pooler_admin_rows(url: str, command: str) -> list[dict]:
     """Read actual PgBouncer admin counters, outside the measured application engine."""
-    import psycopg2
+    import psycopg
 
     admin_url = _replace_database(url, "pgbouncer").replace(
-        "postgresql+psycopg2://", "postgresql://", 1
+        "postgresql+psycopg://", "postgresql://", 1
     )
-    conn = psycopg2.connect(admin_url)
+    # autocommit: PgBouncer admin commands cannot run inside a transaction.
+    # prepare_threshold=None: the admin console does not support prepared statements.
+    conn = psycopg.connect(admin_url, autocommit=True, prepare_threshold=None)
     try:
-        conn.autocommit = True
         with conn.cursor() as cursor:
             cursor.execute(command)
             columns = [column.name for column in cursor.description]
@@ -728,11 +729,11 @@ def test_the_opt_in_pooled_branch_reuses_connections_and_emits_no_prepare(monkey
     3. No session-level statement that a transaction-mode pooler would invalidate is
        emitted. This is a TRIPWIRE, and its two axes are NOT equally strong:
 
-       - PREPARE/DEALLOCATE is STRUCTURALLY ABSENT, not empirically avoided. psycopg2
-         (2.9.12, the declared driver) has no automatic server-side prepared-statement
-         mechanism and never has; `prepare_threshold` is a psycopg3 attribute and
-         psycopg3 is not installed. Claiming a test "proves" this would overstate it,
-         so it is watched only so that a driver swap cannot pass unnoticed.
+       - PREPARE/DEALLOCATE cannot be observed by this hook. The driver is psycopg 3, which
+         prepares at the protocol level, below `before_cursor_execute`; the statement text
+         is never seen. That half is covered by tests/test_postgres_pooler_prepared_statements.py,
+         which runs against a PgBouncer with max_prepared_statements=0 and fails without
+         `prepare_threshold=None`. The regex below still guards a literal PREPARE.
        - DECLARE/FETCH/CLOSE is the axis that is GENUINELY TURNABLE today: setting
          `use_server_side_cursors=True` on the engine emits named cursors, and a
          WITH HOLD cursor does not survive PgBouncer handing the connection to a
@@ -803,8 +804,8 @@ def test_the_opt_in_pooled_branch_reuses_connections_and_emits_no_prepare(monkey
     )
 
     # 3: the tripwire. DECLARE/FETCH/CLOSE is the half that can actually fire here; the
-    # PREPARE half is structurally absent under psycopg2 and is watched only so a driver
-    # swap cannot slip through unnoticed.
+    # Protocol-level prepares are invisible to this hook; see
+    # tests/test_postgres_pooler_prepared_statements.py for that half.
     assert null_session_hazards == [] and pooled_session_hazards == [], (
         "a session-level statement that a transaction-mode pooler would not preserve was "
         "emitted; revisit the PgBouncer reasoning in src/database.py and P0-8 "

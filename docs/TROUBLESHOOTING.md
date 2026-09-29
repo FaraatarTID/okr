@@ -114,7 +114,7 @@ Checking logs for errors
 
 Supabase connection errors
 
-- Verify OKR_DATABASE_URL uses `postgresql+psycopg2://`
+- Verify OKR_DATABASE_URL uses `postgresql+psycopg://`
 - Verify host includes `supabase.com`
 - Ensure `sslmode=require` is present
 - Prefer transaction pooler `:6543` for runtime app traffic; avoid session-pooler saturation patterns for app workloads.

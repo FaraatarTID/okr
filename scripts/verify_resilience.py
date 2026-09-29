@@ -120,7 +120,7 @@ def _write_smoke_env_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
         "OKR_POSTGRES_DB": "okr",
         "OKR_POSTGRES_HOST_PORT": str(postgres_host_port),
         "OKR_DATABASE_URL": (
-            f"postgresql+psycopg2://okr:{postgres_password}@postgres:5432/okr"
+            f"postgresql+psycopg://okr:{postgres_password}@postgres:5432/okr"
         ),
         "OKR_BACKEND_SERVICE_TOKEN": service_token,
         "OKR_BOOTSTRAP_ADMIN_PASSWORD": bootstrap_password,

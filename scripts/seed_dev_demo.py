@@ -19,6 +19,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from src.crud_auth_helpers import hash_password_from_crud  # noqa: E402
+from src.db_url import is_postgres_url  # noqa: E402
 from src.database import get_engine  # noqa: E402
 from src.models import (  # noqa: E402
     Cycle,
@@ -82,7 +83,7 @@ def validate_request(*, argv: list[str], environ: Mapping[str, str]) -> None:
     database_url = _value(environ, "OKR_DATABASE_URL") or _value(
         environ, "DATABASE_URL"
     )
-    if not database_url.startswith(("postgresql+psycopg2://", "sqlite:///")):
+    if not (is_postgres_url(database_url) or database_url.startswith("sqlite:///")):
         raise SeedConfigError(
             "Set a PostgreSQL or test SQLite database URL before seeding."
         )
