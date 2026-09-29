@@ -170,6 +170,7 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_REQUEST_SIGNING_WINDOW_SECONDS` (default: `300`)
   - `OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS` (default: `60`)
   - `OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS` (default: `120`)
+  - `OKR_BACKEND_PREAUTH_RATE_LIMIT_MAX_REQUESTS` (default: `60000`): a coarse bucket per socket peer that runs before the service-token and signature checks. Behind the BFF the peer is the BFF, so this is one shared flood guard for all users, not a per-user limit; a value that is too low locks every user out at once. The default is chosen, not measured.
   - Job quota controls:
     - `OKR_BACKEND_JOB_USER_WINDOW_SECONDS` (default: `60`)
     - `OKR_BACKEND_JOB_USER_MAX_REQUESTS` (default: `8`)

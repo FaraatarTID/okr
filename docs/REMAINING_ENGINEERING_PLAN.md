@@ -498,6 +498,36 @@ remain outside engineering scope.
 Start the A4 design decision early even though its implementation lands in
 Phase 4, because it needs a decision before it needs code.
 
+### Backend structure follow-ups (2026-09-29)
+
+- **P4.1, done.** `require_service_access` is now `verify_service_credentials`, `apply_rate_limit`,
+  `resolve_actor_scope` and `verify_session` behind the same dependency and public signature.
+  `tests/test_service_access_composition.py` pins the steps and their order.
+- **P4.2, done.** `apply_preauth_rate_limit` runs first, keyed on the socket peer, before the token
+  comparison and the HMAC. Behind the BFF the peer is the BFF, so it is one shared flood guard for
+  all users (`OKR_BACKEND_PREAUTH_RATE_LIMIT_MAX_REQUESTS`, default 60000 per window, chosen and not
+  measured). It protects the backend from a caller that reaches it directly; it cannot tell one
+  attacker behind the BFF from another, and the BFF's own limiter does that. A valid token from a spent
+  peer is refused too, and a test states that. Pinned by `tests/test_preauth_rate_limit.py`.
+- **P4.3, measured, no cache added, and the proposed design is rejected.** Measured on the real
+  dependency (SQLite, in-memory security state): a `cycles.all` read costs **5 statements and about
+  5 ms** per request, with the actor scope resolved once per request already (P0-1). Two reasons the
+  short-TTL cache keyed by `(actor, token_version)` should not be built:
+  1. *The key does not protect the bump case.* `token_version` in the key is the version the **caller**
+     supplies from its session cookie. After an account bump the old session still presents the old
+     version, so it hits its own cached entry and is accepted until the TTL expires. That is a regression
+     against D7's "rejected on the next request".
+  2. *A bump is not the only account change.* Deactivation, demotion and manager changes
+     (`update_user_from_crud`) do not touch `token_version`, so a version-keyed entry would keep serving
+     the old scope after all of them.
+
+  `tests/test_scope_freshness.py` drives the real dependency through HTTP and fails (3 of 4) if a
+  process-level TTL scope cache is added. **Not measured:** the PostgreSQL cost, where connection setup
+  dominates (P0-1 note above). Revisit only with a PostgreSQL measurement showing the scope round-trips
+  matter, and with invalidation on every account mutation, not on the version alone.
+- **P4.4, done.** [supabase-api-freeze.md](supabase-api-freeze.md) and
+  `tests/test_supabase_api_freeze.py`. The deprecation decision is left open on purpose.
+- **P4.5, not started.** Replace the `backend_app.main` facade, one module per PR.
 ## Verification drills
 
 `docs/ARCHITECTURE_DELIVERY_SYSTEM.md` requires an item's purpose to be confirmed

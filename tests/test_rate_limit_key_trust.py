@@ -99,8 +99,13 @@ def test_without_the_private_header_the_key_falls_back_to_the_peer(rate_limit_ke
     # "testclient" is the peer address Starlette's TestClient reports. The assertion is
     # exact because the point is that the key is the peer and that a key still exists:
     # a caller-supplied header must not appear, and the key must not be missing.
-    assert keys == ["ip:testclient"], (
+    # Two buckets are consulted per request: the coarse pre-auth bucket, keyed on the
+    # peer, then the per-client bucket. Each family is asserted exactly, so neither can
+    # be dropped or keyed on a caller-supplied header without this failing.
+    assert [k for k in keys if k.startswith("ip:")] == ["ip:testclient"], (
         "with no trusted private header the limiter must key on the peer address so a "
         f"limit stays in force, and must ignore caller-supplied forwarding headers; "
         f"got {keys}"
     )
+    assert [k for k in keys if k.startswith("preauth:")] == ["preauth:testclient"], keys
+    assert len(keys) == 2, keys

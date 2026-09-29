@@ -78,6 +78,7 @@ class BackendSettings:
     request_signing_window_seconds: int
     rate_limit_window_seconds: int
     rate_limit_max_requests: int
+    preauth_rate_limit_max_requests: int
     security_state_backend: str
     security_state_cleanup_seconds: int
     security_state_redis_url: str
@@ -159,6 +160,17 @@ def get_backend_settings() -> BackendSettings:
         rate_limit_max_requests=_as_int(
             get_config_value("OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS", ""),
             default=120,
+            minimum=1,
+        ),
+        # Coarse per-peer bucket that runs BEFORE the token and signature checks. Behind
+        # the BFF the peer is the BFF itself, so this ONE bucket counts every user's
+        # traffic together: too low a ceiling locks everyone out at once. The default is
+        # 1000 requests a second, roughly 500 users each spending the whole per-client
+        # budget, so it is a flood guard against a caller that reaches the backend
+        # directly and not a per-user limit. It is a chosen value, not a measured one.
+        preauth_rate_limit_max_requests=_as_int(
+            get_config_value("OKR_BACKEND_PREAUTH_RATE_LIMIT_MAX_REQUESTS", ""),
+            default=60000,
             minimum=1,
         ),
         security_state_backend=_as_choice(
