@@ -122,6 +122,117 @@ def test_a_missing_compatibility_export_is_reported(manifest):
     assert failures, "a missing compatibility export was treated as agreement"
 
 
+_GROUPED_PYPROJECT = """
+[project]
+name = "example"
+dependencies = ["foo==1.0.0"]
+
+[dependency-groups]
+browser = ["bar==2.0.0"]
+dev = [{include-group = "browser"}, "baz==3.0.0"]
+"""
+
+_GROUPED_LOCK = """
+[[package]]
+name = "foo"
+version = "1.0.0"
+
+[[package]]
+name = "bar"
+version = "2.0.0"
+
+[[package]]
+name = "baz"
+version = "3.0.0"
+"""
+
+
+def test_a_group_included_by_dev_is_part_of_the_authority(manifest):
+    module, write = manifest
+    write(
+        requirements="bar==2.0.0\nbaz==3.0.0\nfoo==1.0.0\n",
+        pyproject=_GROUPED_PYPROJECT,
+        lock=_GROUPED_LOCK,
+    )
+
+    assert module.check() == []
+
+
+def test_an_export_missing_an_included_group_member_is_reported(manifest):
+    # Pairs with the test above: the include is followed, so dropping its member drifts.
+    module, write = manifest
+    write(
+        requirements="baz==3.0.0\nfoo==1.0.0\n",
+        pyproject=_GROUPED_PYPROJECT,
+        lock=_GROUPED_LOCK,
+    )
+
+    failures = module.check()
+
+    assert any("bar" in failure for failure in failures), failures
+
+
+def test_a_group_include_cycle_is_reported_not_recursed_forever(manifest):
+    module, write = manifest
+    write(
+        requirements="foo==1.0.0\n",
+        pyproject="""
+[project]
+name = "example"
+dependencies = ["foo==1.0.0"]
+
+[dependency-groups]
+dev = [{include-group = "other"}]
+other = [{include-group = "dev"}]
+""",
+    )
+
+    failures = module.check()
+
+    assert any("cycle" in failure for failure in failures), failures
+
+
+def test_an_unsupported_group_entry_is_reported(manifest):
+    module, write = manifest
+    write(
+        requirements="foo==1.0.0\n",
+        pyproject="""
+[project]
+name = "example"
+dependencies = ["foo==1.0.0"]
+
+[dependency-groups]
+dev = [{something-else = "x"}]
+""",
+    )
+
+    failures = module.check()
+
+    assert any("Unsupported dependency group entry" in failure for failure in failures)
+
+
+def test_playwright_is_a_dev_and_browser_group_member_not_a_runtime_dependency():
+    """The backend image installs `--no-dev`; CI installs `--group dev` and needs Playwright."""
+    import tomllib
+
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    runtime = [str(item).lower() for item in data["project"]["dependencies"]]
+    groups = data["dependency-groups"]
+
+    assert not any(item.startswith("playwright") for item in runtime)
+    assert any(str(i).startswith("playwright==") for i in groups["browser"])
+    assert {"include-group": "browser"} in groups["dev"]
+
+
+def test_the_backend_image_installs_the_browser_group_only_on_request():
+    dockerfile = (ROOT / "deploy" / "docker" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "ARG INSTALL_BROWSER_GROUP=false" in dockerfile
+    assert "--no-dev" in dockerfile
+    assert '"$INSTALL_BROWSER_GROUP" = "true"' in dockerfile
+    assert "--group browser" in dockerfile
+
+
 def test_release_renderer_rejects_a_digest_that_is_not_64_hex():
     module = _load("render_k8s_release")
 

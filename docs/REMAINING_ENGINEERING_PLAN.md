@@ -527,7 +527,21 @@ Phase 4, because it needs a decision before it needs code.
   matter, and with invalidation on every account mutation, not on the version alone.
 - **P4.4, done.** [supabase-api-freeze.md](supabase-api-freeze.md) and
   `tests/test_supabase_api_freeze.py`. The deprecation decision is left open on purpose.
-- **P4.5, not started.** Replace the `backend_app.main` facade, one module per PR.
+- **P4.5, partly done (2 of 5 modules).** `security.py` and `authentication.py` no longer reach `backend_app.main`
+  (#198). Still reaching it: `main_runtime_helpers.py`, `main_workflow_handlers.py`, `main_mutation_handlers.py`, and
+  every router through `main.<name>`. The facade cannot go while about 20 tests patch attributes on `backend_main`; each
+  module move needs its tests moved with it. Per-module status: [compatibility-callers.md](compatibility-callers.md).
+
+### Dependencies and lint follow-ups (2026-09-29)
+
+- **P5.1, baseline in place, findings not cleared.** `BLE` and `S` are enabled with a shrink-only per-file baseline
+  ([ruff-baseline.md](ruff-baseline.md)). The 125 blind excepts and 75 bandit findings are listed, not reviewed.
+- **P5.2a, done.** `playwright` moved from runtime dependencies to a `browser` dependency group that `dev` includes.
+  The backend image installs `--no-dev`, so it drops from 217.8 MB to 120.2 MB (measured, `docker image inspect`).
+  It never had a Chromium binary, so `PDF_METHOD=chromium` could not render from it before or after; startup preflight
+  still passes `has_chromium_runtime=True` unconditionally and does not notice. Not changed here.
+- **P5.2b, not started.** `psycopg2-binary` to `psycopg[binary]`.
+
 ## Verification drills
 
 `docs/ARCHITECTURE_DELIVERY_SYSTEM.md` requires an item's purpose to be confirmed

@@ -44,7 +44,7 @@ Runtime preflight shows configuration errors
 - If preflight says `PDF_METHOD=pdfshift but PDFShift API key is missing`:
   - Add `pdfshift_api_key`
 - If preflight says `PDF_METHOD=chromium but Playwright/Chromium runtime is unavailable`:
-  - Install Playwright package and Chromium browser runtime.
+  - Install Playwright package and Chromium browser runtime. In the backend image, Playwright is opt-in: rebuild with `--build-arg INSTALL_BROWSER_GROUP=true` and set `OKR_CHROMIUM_EXECUTABLE_PATH`. Locally, `uv sync --group browser` (or `--group dev`, which includes it).
 - If preflight says unsupported `PDF_METHOD`:
   - Change `PDF_METHOD` to `pdfshift` or `chromium`
 - If preflight says `OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set` even after changing secrets:

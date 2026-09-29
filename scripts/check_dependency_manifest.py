@@ -18,10 +18,28 @@ def _name(value: str) -> str:
     return re.split(r"[<>=!~;\s]", value, maxsplit=1)[0].replace("_", "-").lower()
 
 
+def _expand_group(groups: dict, name: str, _seen: tuple[str, ...] = ()) -> list[str]:
+    """Return the requirement strings of a dependency group, following include-group."""
+    if name in _seen:
+        raise ValueError(
+            f"Dependency group include cycle: {' -> '.join(_seen + (name,))}"
+        )
+    values: list[str] = []
+    for item in groups[name]:
+        if isinstance(item, dict):
+            included = item.get("include-group")
+            if not isinstance(included, str):
+                raise ValueError(f"Unsupported dependency group entry: {item!r}")
+            values.extend(_expand_group(groups, included, _seen + (name,)))
+        else:
+            values.append(item)
+    return values
+
+
 def _dependencies_from_pyproject() -> dict[str, str]:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     values = list(data["project"]["dependencies"])
-    values.extend(data["dependency-groups"]["dev"])
+    values.extend(_expand_group(data["dependency-groups"], "dev"))
     result: dict[str, str] = {}
     for value in values:
         match = _PINNED.match(value)

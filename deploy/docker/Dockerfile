@@ -19,7 +19,14 @@ RUN set -eux; \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock /app/
-RUN uv sync --frozen --no-dev --no-install-project
+# Playwright (the `browser` dependency group) is left out of the runtime image: 138 MB of
+# site-packages and no Chromium binary, so PDF_METHOD=chromium cannot render from this image
+# either way. Build with --build-arg INSTALL_BROWSER_GROUP=true to add the package; a browser
+# binary (OKR_CHROMIUM_EXECUTABLE_PATH) is still the operator's to provide.
+ARG INSTALL_BROWSER_GROUP=false
+RUN set -eux; \
+    if [ "$INSTALL_BROWSER_GROUP" = "true" ]; then extra="--group browser"; else extra=""; fi; \
+    uv sync --frozen --no-dev --no-install-project $extra
 ENV PATH="/app/.venv/bin:$PATH"
 
 COPY src/ /app/src/
