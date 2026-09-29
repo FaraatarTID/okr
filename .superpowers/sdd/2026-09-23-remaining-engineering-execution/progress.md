@@ -32,7 +32,7 @@ Execution constraint: `.git` is read-only in this managed workspace (`index.lock
 
 - [x] T00 Register reconciliation (local report and canonical corrections reviewed; no Git/CI closure)
 - [x] T01 Independent baseline audit and final cross-signoff (local; external gates remain)
-- [x] T02 Read-path payload parity (69 focused tests; scoped mypy/Ruff/format pass; independent review PASS. Assignee-only context contains only parent IDs/titles per user decision; two unrelated read-helper mypy diagnostics remain.)
+- [x] T02 Read-path payload parity (73 focused tests; scoped mypy/Ruff/format pass; independent review PASS. Assignee-only context contains only parent IDs/titles per user decision; two unrelated read-helper mypy diagnostics remain.)
 - [x] T03 Actor-presence audit (seven kinds, behavioral negative/positive controls, independent review PASS; no production edits)
 - [x] T04 Evidence gate verification and disposition (A3 has no local wiring gap; F6 remains external)
 - [x] T05 Roadmap and backlog truth (two owned documents; one review fix round; scoped re-review PASS)
@@ -53,7 +53,7 @@ Execution constraint: `.git` is read-only in this managed workspace (`index.lock
 - [x] T20 Verified-email contract (isolated verifier complete and independently approved; IdP guarantee and T19/D9 integration remain gates)
 - [x] T21 Token-version enforcement (local next-request account-version check complete and independently approved; production bump trigger remains open)
 - [x] T22 D3 architecture decision and T23 detailed specification (per-session shared revocation; owner approved the spec on 2026-09-27)
-- [ ] T23 Implement approved D3 design (Tasks 1–3 locally implemented and independently reviewed; Task 4/provider evidence and release gates remain)
+- [ ] T23 Implement approved D3 design (Tasks 1–4 locally implemented and independently reviewed; Task 4 cross-process/restart/expiry/outage drill passed against disposable Redis. Hosted CI, deployed-topology/release acceptance, coordinated legacy-session cutover, T24 Origin/CSRF, and T19 admin identity gates remain.)
 - [ ] T24 Coupled D4 + D2 integration unit
 - [ ] T25 Customer identity expansion gate
 - [x] T26 Control-plane runtime contract (57 focused runtime/process/API tests; 51 contract tests; OpenAPI/schema/operation outputs regenerated; independent review PASS)
@@ -62,10 +62,10 @@ Execution constraint: `.git` is read-only in this managed workspace (`index.lock
 - [ ] T29 Runtime adapter gate
 - [ ] T30 Kubernetes target gate
 - [ ] T31 Human operational and deployed-edge gates
-- [ ] T32 PostgreSQL snapshot read-path budget (real local PostgreSQL 16 run 10 passed/0 skipped on 2026-09-27; counters recorded in `task-T32-live-measurement-2026-09-27.md`; hosted non-skipping CI evidence still required)
+- [x] T32 PostgreSQL snapshot read-path budget (P0-3 repository evidence gate closed: exact hosted run [36405502325](https://github.com/FaraatarTID/okr/actions/runs/36405502325) on `61886e0` passed the non-skipping PostgreSQL-backed `ritual.snapshot` test; retained JUnit records 12 SQL statements, 10 checkouts, 10 new client connections, and 1 SQL-backed scope lookup. This is repository CI evidence, not deployed performance.)
 - [x] T33 SPA-to-BFF private client-IP boundary
-- [ ] T34 Callerless identity-control disposition
-- [ ] T35 PgBouncer transaction-pooling verification
+- [x] T34 Callerless identity-control disposition (P0-5 bounded disposition complete: the exact callerless helper and test/local identity-port stores are labeled test-only/deferred, with tracked caller searches and negative-behavior evidence. This does not claim production identity revocation; see the canonical P0-5 row.)
+- [x] T35 PgBouncer transaction-pooling verification (P0-8 repository topology evidence gate closed: hosted run [36405502325](https://github.com/FaraatarTID/okr/actions/runs/36405502325) passed both real PgBouncer transaction-pooling modes and retained the measurements. Production topology is unverified; `OKR_DB_USE_NULL_POOL=true` remains the default.)
 
 ## Findings carried from adversarial review
 
@@ -108,7 +108,7 @@ Task 0 (T00): historical one-round completion note superseded. T00 required late
 |---|---|---|
 | T00 | Reconcile all 55 A–F/P0 rows, avoid inferring external facts | report and canonical correction review PASS; final T00/T01 cross-signoff PASS locally |
 | T01 | Independently audit register, 36 packets, P0 map and conflicts | final cross-signoff PASS; owner and external evidence gates retained |
-| T02 | F1/P0-2 predicate decision, owner/assignee parity, task-error behavior | PASS: 69 focused tests; six-kind parity; minimal assignee-only parent IDs/titles; sanitized task-query errors; behavioral check-in exclusions; independent review PASS. Two unrelated mypy diagnostics remain in the shared read helper for T32. |
+| T02 | F1/P0-2 predicate decision, owner/assignee parity, task-error behavior | PASS: 73 focused tests; six-kind parity; minimal assignee-only parent IDs/titles; sanitized task-query errors; behavioral check-in exclusions; independent review PASS. Two unrelated mypy diagnostics remain in the shared read helper for T32. |
 | T03 | Trace actor presence across seven enumerated kinds | PASS: 36 backend + 23 BFF tests; actorless/mismatched requests rejected before protected reads, authorized controls reach real scope paths; independent review PASS. See `task-T03-report.md` and `task-T03-review.md`. `node.get` Goal/Task serialization still raises a separate DetachedInstanceError after authorization and is not fixed by T03. |
 | T04 | A3 Done: refresh existing promotion placement and PR fixture evidence; F6 external | PASS: 71 focused tests; BLOCKED bundle failed closed as expected; independent review PASS; no code gap. See `task-T04-report.md` and `task-T04-review.md`. |
 | T05 | Roadmap/backlog claims aligned with current authoritative plan | PASS after one fix round: 91-file Docs HQ and 18 direct links pass; performance points to T13/current register; tenant/RLS rejection unconditional. See `task-T05-report.md`, `task-T05-review.md`, and `task-T05-rereview.md`. |
@@ -138,10 +138,10 @@ Task 0 (T00): historical one-round completion note superseded. T00 required late
 | T29 | Runtime adapter waits for deploy target/contract | consistent; local limitations remain explicit |
 | T30 | Kubernetes manifests wait for deployment inputs | consistent; no placeholder deployability claim |
 | T31 | Human gates and P0-4 deployed edge proof | Local main-template Nginx/capture harness PASS on a private no-egress network; TLS template has static coverage only. Target template, real ingress, direct-BFF reachability, named owner, real-data approval, and deferred Phase 3 scope remain external gates. |
-| T32 | P0-3 PostgreSQL `ritual.snapshot` budget | Live PostgreSQL 16 run passed 10/10 with `OKR_REQUIRE_TEST_POSTGRES_URL=true`; krs 8 statements/4 checkouts/4 connections/1 scope resolution, snapshot 12/10/10/1; hosted non-skipping run remains required |
+| T32 | P0-3 PostgreSQL `ritual.snapshot` budget | CLOSED for repository evidence: hosted run [36405502325](https://github.com/FaraatarTID/okr/actions/runs/36405502325) on `61886e0` passed the non-skipping PostgreSQL-backed snapshot test; retained JUnit records 12 SQL statements, 10 checkouts, 10 new connections, and 1 scope lookup. Does not establish deployed performance. |
 | T33 | P0-4 SPA→BFF private-IP relay | edge-provided pass, absent case, XFF/X-Real-IP exclusion; no spoof-overwrite claim |
-| T34 | P0-5 two callerless identity controls | after T22/T23/T25; real production caller/negative path or remove/relabel inert claims |
-| T35 | P0-8 transaction-pooler verification | `OKR_TEST_PGBOUNCER_URL`, real PgBouncer service/config, both `_create_engine` branches and non-skipping CI |
+| T34 | P0-5 two callerless identity controls | CLOSED as bounded deferred/test-only disposition. No production caller or delivered identity revocation is claimed; the canonical P0-5 row preserves the open T19/T23/T25 gates. |
+| T35 | P0-8 transaction-pooler verification | CLOSED for hosted repository topology evidence by run [36405502325](https://github.com/FaraatarTID/okr/actions/runs/36405502325), which retained both NullPool and QueuePool transaction-mode measurements. Production topology remains unverified and NullPool remains the default. |
 
 The pairwise conflict matrix above maps shared files/contracts. T01 verified the current packet scope and cross-signed the baseline; exact file reservations remain required before each dispatch.
 
@@ -350,3 +350,5 @@ QG-002 final coordinator verification (2026-09-28): reran the exact full-reposit
 T23 legacy-session cutover documentation (2026-09-28): `DEPLOYMENT.md` now records the future, T24-gated coordinated backend/BFF rollout, shared-provider readiness, one-time reauthentication for pre-registry cookies, prohibition on manual backfill/first-request registration, cookie clearing after `/session/me` rejects an old session, and cookie preservation on provider 503. Independent review APPROVED the exact insertion against the T23 spec. This documents expected cutover impact only; no release or session migration occurred. Docs HQ passed (191 Markdown files). See `task-T23-cutover-runbook-report.md` and `task-T23-cutover-runbook-review.md`.
 
 Post-push CI repair (2026-09-28, commit `054b957`): GitHub Actions run `36398422489` failed only in `backend-quality` (five Ruff format files) and `Contract and tooling quality` (stale SPA operation-route manifest); the other jobs passed. Formatted the five reported files and regenerated `spa-web/src/lib/api/generated/operation-routes.ts` from the canonical generator. GitGuardian incident `#37685171` points to a fixed test-only password sentinel in `tests/test_frontend_budget_probe.py`; review found no real credential in this fixture. The test now uses runtime-generated passwords and retains the no-echo assertions. Independent review initially found one remaining fixed positive-test sentinel; the follow-up replaced it and was approved. Focused probe tests passed (23); OpenAPI/manifest checks, repo-wide Ruff format check (400 files), `git diff --check`, and final `just check` passed: Python 1,487 passed / 28 skipped, BFF 194, SPA 258, plus lint, typechecks, generated contracts, boundaries, and topology. Hosted rerun after pushing the correction remains pending; the existing history is not rewritten for this synthetic value.
+
+T02/P0-2 canonical closure (2026-09-29): Fresh current-checkout parity/Supabase suite passed 73 tests; scoped Ruff check and format check passed. Reconciled the stale authoritative register row to **Done; hosted CI verified**, naming the user-selected owner-or-assignee predicate, minimal assignee-only parent context, sanitized explicit errors, six-kind parity, and the exact code SHA `f96eb6bd23eca3f3c1f7af45b19056d25595247c` / CI run `36534627084`. The first draft's links to ignored SDD artifacts were caught and removed; the final row cites tracked source/tests only. Independent status review APPROVED with no findings. Commit `a1ac47dac0a43710549ecf0d6b2fb2e7e39399d3` was pushed; exact-SHA CI run `36536541886` passed all jobs including Docs HQ, backend-quality and spa-e2e. No Node 20 action warnings; Ubuntu 26 runner-image notice only. HEAD and origin match. Scope limit: this closes P0-2 task visibility/read-payload parity only, not `node.get`, deployment, or unrelated read-path issues.
