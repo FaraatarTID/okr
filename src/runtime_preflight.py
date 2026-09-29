@@ -21,6 +21,16 @@ class RuntimePreflightReport:
         return not self.errors
 
 
+# Message prefixes of the PDF findings raised by evaluate_runtime_preflight. Callers that
+# treat PDF problems as advisory (the backend, which starts without a renderer and reports
+# it at export time) partition on these, so keep them in step with the messages below.
+PDF_FINDING_PREFIXES = ("PDF_METHOD=", "Unsupported PDF_METHOD")
+
+
+def is_pdf_finding(message: str) -> bool:
+    return str(message).startswith(PDF_FINDING_PREFIXES)
+
+
 def _normalize_pdf_method(pdf_method: str) -> str:
     value = str(pdf_method or "").strip().lower()
     if value == "shiftpdf":
