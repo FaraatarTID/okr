@@ -136,6 +136,31 @@ A consumer search should look for the literal `oidc-session-v1`, for a
 `payload.signature` split on a single `.`, and for verification callers of
 `verify_app_session_token`.
 
+### T17 verification of D6-1 and the D6-4 boundary (2026-09-29)
+
+The BFF remains the only minter and verifier of session cookies accepted by
+authenticated BFF operations. Its verifier requires `v: "v1"`, a `sid`, and a
+nested `user` (`spa-bff/src/session.ts`); the focused behavioral test in
+`spa-bff/test/session.test.ts` constructs a correctly HMAC-signed, unexpired
+Python-format `oidc-session-v1` token and confirms that verifier rejects it.
+The Python `issue_app_session_token` / `verify_app_session_token` docstrings in
+`src/saas/identity_contract.py` already mark both functions deprecated and
+non-authoritative. Their Python tests remain compatibility characterization.
+The backend's shared session registry governs revocation and request admission;
+it does not mint or verify a second session-cookie format.
+
+Consumer inventory covered this repository's `src`, `spa-bff`, `spa-web`,
+`backend_app`, `tests`, `scripts`, and `deploy`, plus those same directories in
+the locally available `C:/Faraatar-TID_Apps/worktrees/okr/urban-den/okr`
+checkout. A read-only sweep of `C:/Faraatar-TID_Apps`, excluding `.git`,
+`node_modules`, and virtual environments, found only these OKR checkout copies
+of the implementation, tests, and documentation. No production caller of the
+Python pair was found in that local scope. External repositories and deployed
+consumers were unavailable for inspection, so this is **not** evidence that no
+external consumer exists. D6-4 deletion remains gated on an evidenced external
+consumer search for the recorded mint formula and any compatibility migration
+it reveals. The pair stays deprecated and non-authoritative in the meantime.
+
 ## Workstream E - Provider-gated and externally blocked
 
 Recorded so these are not mistaken for startable work. Do not begin one without
@@ -322,7 +347,7 @@ Progress:
 
 | Item | State | Note |
 | --- | --- | --- |
-| D6 | Decided | D6-1 accepted: the BFF owns the session; the Python issue/verify pair is deprecated and non-authoritative. D6-4 (delete outright) is gated on a consumer search for the recorded mint formula. |
+| D6 | T17 verified locally; D6-4 open | D6-1 accepted: the BFF owns session-cookie minting and verification. The Python issue/verify pair is deprecated and non-authoritative; the signed Python-format token is rejected by the BFF behavioral test. The local consumer inventory found no production caller in the available OKR checkouts. External repositories and deployed consumers were not inspected, so D6-4 deletion remains gated on that evidence and any required compatibility migration. See the T17 verification section above. |
 | D8 | Verified, assumption refuted | Read-only counts against the configured database found one non-email `admin` row and no `email` or `external_subject` column, so the cheap `/v1/auth/me` path cannot resolve any current user. Outcome locked to the M-L path. |
 | D9 | T20 verifier contract implemented and independently reviewed; D9 remains open | The isolated BFF ID-token verifier now accepts only boolean `email_verified: true` and gives distinct stable errors for missing, false, and malformed values. This does not enforce the full exchange/session-minting acceptance criterion: the verifier is not routed into a login flow, and the selected IdP guarantee remains unconfirmed. Keep production login blocked until the identity owner confirms the claim guarantee and T19/D8 provisioned-link gates are resolved. Evidence: `.superpowers/sdd/2026-09-23-remaining-engineering-execution/task-T20-report.md` and `task-T20-independent-review.md`. |
 | D3a | Committed and CI-verified at adcea217; deployment not verified | Same-process logout replay, the most severe member of the D3 family and the only one that needs no restart or second replica. `isSessionRegistryActive` deleted the revoked record before returning `false`, and a missing record is reported active (`session.ts:137-139`), so the first post-logout request was rejected and the **second was accepted** in the same process. Reproduced on the real BFF request path before any change: `200` before logout, `200` on logout, `401 MISSING_SESSION` on the first replay, `200` on the second. The registry also released records at `expiresAt <= now` while `verifySessionToken` accepts while `exp >= now`, so the boundary second (where the credential is still acceptable) was replayable the same way. Remediation: revoked records are retained for the whole interval in which the signed credential remains acceptable, released only at `expiresAt < now`; cleanup is expiry-only, via `pruneExpiredSessions` called on issuance; and no size cap was added, because evicting an unexpired record would discard revocation state while the credential is still acceptable and, given the unchanged unknown-id policy, would recreate the defect. No authentication semantics were changed and no shared store was added. Pinned by `spa-bff/test/session_revocation_replay.test.ts` (5 request-path cases: repeated replays with a no-backend-reach assertion, an independent valid-session control, repeated logout, the expiry boundary asked twice, and expiry-only release). **Still open, and not claimed by this row: restart and cross-instance revocation - an in-process registry cannot provide either; unknown session ids continue to be reported active, so `!sid` and `!record` both fail open; and memory is bounded only by issuance rate x TTL, with no cap and with records reclaimed only by a later issuance sweep.** |
