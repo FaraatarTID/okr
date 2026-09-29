@@ -1,0 +1,242 @@
+{
+  "_note": "Counts of ruff BLE and S findings per file (S is ignored in tests). A count may only go DOWN. See docs/ruff-baseline.md.",
+  "files": {
+    "alembic/env.py": {
+      "BLE001": 1,
+      "S110": 1
+    },
+    "alembic/versions/baseline_2026_08_26_schema.py": {
+      "BLE001": 1
+    },
+    "backend_app/config.py": {
+      "S104": 1
+    },
+    "backend_app/data_access_mode.py": {
+      "BLE001": 3
+    },
+    "backend_app/main_helpers.py": {
+      "BLE001": 3
+    },
+    "backend_app/path_setup.py": {
+      "BLE001": 1
+    },
+    "backend_app/read_query_helpers.py": {
+      "BLE001": 2
+    },
+    "backend_app/response_scope_helpers.py": {
+      "BLE001": 2
+    },
+    "backend_app/routers/ai_routes.py": {
+      "BLE001": 1
+    },
+    "backend_app/routers/platform_routes.py": {
+      "BLE001": 2
+    },
+    "backend_app/security_state.py": {
+      "BLE001": 6,
+      "S110": 1,
+      "S608": 3
+    },
+    "backend_app/worker.py": {
+      "BLE001": 9
+    },
+    "backend_app/worker_healthcheck.py": {
+      "S108": 1
+    },
+    "scripts/attestation_verification.py": {
+      "S105": 1
+    },
+    "scripts/capture_compose_resources.py": {
+      "S603": 1
+    },
+    "scripts/check_deploy_config.py": {
+      "BLE001": 3,
+      "S104": 1
+    },
+    "scripts/check_deploy_runtime_matrix.py": {
+      "S105": 2,
+      "S603": 2
+    },
+    "scripts/check_deployment_topology.py": {
+      "S104": 2
+    },
+    "scripts/check_docs_hq_links.py": {
+      "BLE001": 1,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/check_generated_artifacts.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/check_openapi_drift.py": {
+      "BLE001": 1,
+      "S110": 1
+    },
+    "scripts/db_tcp_probe.py": {
+      "BLE001": 2,
+      "S112": 1
+    },
+    "scripts/dev_workflow.py": {
+      "S603": 2
+    },
+    "scripts/jan_context.py": {
+      "S310": 2
+    },
+    "scripts/measure_task_graph.py": {
+      "S603": 1
+    },
+    "scripts/migrate_tenant_databases.py": {
+      "S603": 2
+    },
+    "scripts/perf_hotpaths.py": {
+      "S106": 1
+    },
+    "scripts/probe_frontend_budget.py": {
+      "S310": 1
+    },
+    "scripts/read_env_value.py": {
+      "BLE001": 1
+    },
+    "scripts/security_parity_probe.py": {
+      "S310": 1
+    },
+    "scripts/slo_probe.py": {
+      "BLE001": 4,
+      "S310": 10
+    },
+    "scripts/supabase_https_probe.py": {
+      "BLE001": 1,
+      "S310": 2
+    },
+    "scripts/verify_dependency_licenses.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/verify_dependency_scans.py": {
+      "S603": 1
+    },
+    "scripts/verify_deploy_readiness.py": {
+      "BLE001": 2,
+      "S310": 2,
+      "S603": 1
+    },
+    "scripts/verify_e2e_environment.py": {
+      "S603": 1
+    },
+    "scripts/verify_helper_integrity.py": {
+      "BLE001": 2
+    },
+    "scripts/verify_migration_sequence.py": {
+      "S603": 1
+    },
+    "scripts/verify_module_design_efficiency.py": {
+      "BLE001": 1
+    },
+    "scripts/verify_module_export_contracts.py": {
+      "BLE001": 1
+    },
+    "scripts/verify_postgresql_integration.py": {
+      "S603": 1
+    },
+    "scripts/verify_prerelease_config.py": {
+      "BLE001": 1
+    },
+    "scripts/verify_prerelease_smoke.py": {
+      "S310": 2
+    },
+    "scripts/verify_resilience.py": {
+      "BLE001": 1,
+      "S104": 2,
+      "S310": 1,
+      "S603": 1
+    },
+    "scripts/verify_twelve_factor_contract.py": {
+      "S506": 1,
+      "S603": 1
+    },
+    "src/audit.py": {
+      "BLE001": 2
+    },
+    "src/crud_auth_helpers.py": {
+      "BLE001": 1
+    },
+    "src/crud_core_helpers.py": {
+      "BLE001": 4
+    },
+    "src/crud_data_helpers.py": {
+      "BLE001": 2
+    },
+    "src/crud_update_helpers.py": {
+      "BLE001": 1
+    },
+    "src/database.py": {
+      "BLE001": 5,
+      "S105": 1,
+      "S608": 1
+    },
+    "src/domain/auth_service.py": {
+      "BLE001": 1
+    },
+    "src/domain/crud_contracts.py": {
+      "S105": 1
+    },
+    "src/domain/read_queries.py": {
+      "BLE001": 2
+    },
+    "src/saas/backup_operations.py": {
+      "S101": 1
+    },
+    "src/saas/provisioning.py": {
+      "BLE001": 1,
+      "S101": 1
+    },
+    "src/saas/release_operations.py": {
+      "BLE001": 3,
+      "S101": 2,
+      "S110": 1
+    },
+    "src/services/ai_provider.py": {
+      "BLE001": 3
+    },
+    "src/services/ai_service.py": {
+      "BLE001": 13
+    },
+    "src/services/backend_client.py": {
+      "BLE001": 5,
+      "S112": 1
+    },
+    "src/services/backend_launcher.py": {
+      "BLE001": 3,
+      "S603": 2
+    },
+    "src/services/distributed_state_service.py": {
+      "BLE001": 2
+    },
+    "src/services/pdf_service.py": {
+      "BLE001": 5,
+      "S110": 2
+    },
+    "src/services/supabase_api_mode_nodes.py": {
+      "BLE001": 1
+    },
+    "src/services/supabase_api_mode_transport.py": {
+      "BLE001": 5
+    },
+    "src/utils/cache_utils.py": {
+      "BLE001": 1
+    },
+    "tests/test_e2e_playwright_spa_login_to_atlas.py": {
+      "BLE001": 10
+    },
+    "tests/test_e2e_smoke.py": {
+      "BLE001": 1
+    },
+    "tests/test_session_registry_process_integration.py": {
+      "BLE001": 2
+    },
+    "tests/test_supabase_read_efficiency.py": {
+      "BLE001": 1
+    }
+  }
+}
