@@ -14,12 +14,12 @@ from backend_app.security import validate_forwarded_role_claims
 
 
 def test_no_claim_supplied_skips_the_check_without_resolving_scope(monkeypatch) -> None:
-    import backend_app.main as backend_main
+    import backend_app.scope_resolution as scopes
 
     def _fail(*_args, **_kwargs):
         raise AssertionError("scope must not be resolved when no claim is supplied")
 
-    monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", _fail)
+    monkeypatch.setattr(scopes, "_resolve_scope_for_actor", _fail)
 
     validate_forwarded_role_claims(
         actor="alice", x_okr_role=None, x_okr_roles=None, scope=None
@@ -33,12 +33,12 @@ def test_no_actor_skips_the_check() -> None:
 
 
 def test_claim_is_rejected_when_scope_lookup_fails(monkeypatch) -> None:
-    import backend_app.main as backend_main
+    import backend_app.scope_resolution as scopes
 
     def _boom(*_args, **_kwargs):
         raise RuntimeError("database unavailable")
 
-    monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", _boom)
+    monkeypatch.setattr(scopes, "_resolve_scope_for_actor", _boom)
 
     with pytest.raises(HTTPException) as exc:
         validate_forwarded_role_claims(
@@ -48,12 +48,12 @@ def test_claim_is_rejected_when_scope_lookup_fails(monkeypatch) -> None:
 
 
 def test_lookup_http_errors_are_propagated_unchanged(monkeypatch) -> None:
-    import backend_app.main as backend_main
+    import backend_app.scope_resolution as scopes
 
     def _stale(*_args, **_kwargs):
         raise HTTPException(status_code=401, detail="Session token version is stale.")
 
-    monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", _stale)
+    monkeypatch.setattr(scopes, "_resolve_scope_for_actor", _stale)
 
     with pytest.raises(HTTPException) as exc:
         validate_forwarded_role_claims(

@@ -21,6 +21,31 @@ contracts directly. No production, CLI, or deployment caller was found.
 
 The facade boundary and app cache suites currently pass 29 combined tests. This confirms that the compatibility surface protects active cache, bootstrap, serialization, and shell-runtime behavior and must be migrated deliberately.
 
+## `backend_app.main` facade (P4.5, in progress)
+
+`backend_app/main.py` re-exports names that routers, handlers and tests reach through `main.<name>`. The
+retirement is one module per commit: move the caller to the real owner, then drop the matching re-export or
+`noqa: F401` once no caller remains. The lists below are from a text search of `backend_app/` on 2026-09-29; like
+the sweep above, they do not prove dynamic imports.
+
+| Module | Reaches `backend_app.main` | Status |
+|---|---|---|
+| [security.py](../backend_app/security.py) | Two function-local `from backend_app import main` lookups of the scope resolver | **Done.** Calls [scope_resolution.py](../backend_app/scope_resolution.py) directly. `resolve_actor_username` moved to the leaf [actor_identity.py](../backend_app/actor_identity.py) to avoid a `security` to `scope_resolution` cycle |
+| [authentication.py](../backend_app/authentication.py) | `sys.modules.get("backend_app.main")` lookup of `_require_admin_actor_scope` | **Done.** Calls the helper directly |
+| [main_runtime_helpers.py](../backend_app/main_runtime_helpers.py) | Three function-local imports (lines 62, 89, 185) that honour patches made on the facade | Not started |
+| [main_mutation_handlers.py](../backend_app/main_mutation_handlers.py) | One function-level and eight nested imports | Not started |
+| [main_workflow_handlers.py](../backend_app/main_workflow_handlers.py) | One function-level import | Not started |
+| `backend_app/routers/*` | `Depends(main.…)` and `main._require_admin_actor_scope(...)` | Not started |
+
+Two seams were deliberately kept because callers still depend on them, so their `noqa: F401` markers stay:
+
+- `require_control_plane_operator` is still read from the facade by the control-plane router through `getattr(main, …)`.
+- `require_service_access` is still bound by every router as `Depends(main.require_service_access)`, and tests
+  override it on the facade with `dependency_overrides`.
+
+Tests that patched `backend_main._resolve_scope_for_actor` to influence the service dependency were moved to patch
+`backend_app.scope_resolution`, which is the seam the dependency now uses. Handlers and routers still resolve the
+scope through the facade, so patches on the facade keep working there until those modules move.
 ## Launcher surfaces
 
 The supported journey mapping is recorded in [launcher-command-matrix.md](launcher-command-matrix.md). The preferred Docker command is `just start`; the Windows wrappers under `scripts/windows/` remain compatibility entrypoints for operator and local-development workflows. The launcher contract suite passed 2 tests, covering the wrapper command and process-shutdown contracts. `scripts/windows/run_hybrid_app.bat --status` also completed successfully against the live Compose target, showing backend API and Postgres healthy with worker, BFF, and web running, without mutating services.

@@ -464,6 +464,7 @@ def test_job_polling_query_budget_guard(isolated_db, monkeypatch):
 
 
 def test_performance_query_budgets_for_read_endpoints(isolated_db, monkeypatch):
+    import backend_app.scope_resolution as scope_resolution
     import backend_app.main as backend_main
     from src.crud import create_cycle, create_user
     from src.database import get_engine
@@ -509,6 +510,8 @@ def test_performance_query_budgets_for_read_endpoints(isolated_db, monkeypatch):
     # is bound to the actor ID returned by this scope fixture.
     monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: False)
     monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", _admin_scope)
+    # The service dependency now calls scope_resolution directly, not the facade.
+    monkeypatch.setattr(scope_resolution, "_resolve_scope_for_actor", _admin_scope)
     monkeypatch.setattr(backend_main, "_resolve_actor", _dummy_actor)
 
     engine = get_engine()

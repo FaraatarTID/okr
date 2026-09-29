@@ -3003,7 +3003,7 @@ def test_db_restore_rejects_oversized_content_length(monkeypatch):
 
 
 def test_resolve_actor_rejects_header_payload_mismatch():
-    from backend_app.security import resolve_actor_username
+    from backend_app.actor_identity import resolve_actor_username
     from fastapi import HTTPException
 
     with pytest.raises(HTTPException) as exc_info:
@@ -3013,21 +3013,21 @@ def test_resolve_actor_rejects_header_payload_mismatch():
 
 
 def test_resolve_actor_accepts_matching_header_payload():
-    from backend_app.security import resolve_actor_username
+    from backend_app.actor_identity import resolve_actor_username
 
     actor = resolve_actor_username(header_actor="alice", payload_actor="alice")
     assert actor == "alice"
 
 
 def test_resolve_actor_accepts_header_only():
-    from backend_app.security import resolve_actor_username
+    from backend_app.actor_identity import resolve_actor_username
 
     actor = resolve_actor_username(header_actor="alice", payload_actor=None)
     assert actor == "alice"
 
 
 def test_resolve_actor_accepts_payload_only():
-    from backend_app.security import resolve_actor_username
+    from backend_app.actor_identity import resolve_actor_username
 
     actor = resolve_actor_username(header_actor=None, payload_actor="alice")
     assert actor == "alice"

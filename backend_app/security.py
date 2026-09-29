@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from fastapi import Header, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
+from backend_app import scope_resolution
 from backend_app.config import get_backend_settings
 from backend_app.rate_limiter import check_rate_limit
 from backend_app.security_state import (
@@ -470,9 +471,7 @@ async def require_service_access(
 
 
 def _resolve_current_actor_scope(actor: str, token_version: int) -> dict:
-    from backend_app import main as backend_main
-
-    return backend_main._resolve_scope_for_actor(actor, token_version=token_version)
+    return scope_resolution._resolve_scope_for_actor(actor, token_version=token_version)
 
 
 def _normalize_forwarded_role_claim(value: str | None) -> set[str]:
@@ -513,9 +512,7 @@ def validate_forwarded_role_claims(
     # unverified claim through exactly when the account state is unavailable.
     if scope is None:
         try:
-            from backend_app import main as backend_main
-
-            scope = backend_main._resolve_scope_for_actor(actor_name)
+            scope = scope_resolution._resolve_scope_for_actor(actor_name)
         except HTTPException:
             raise
         except Exception as exc:
@@ -545,28 +542,6 @@ def validate_forwarded_role_claims(
                 status_code=403,
                 detail="Role claim does not match actor scope.",
             )
-
-
-def resolve_actor_username(
-    *,
-    header_actor: str | None,
-    payload_actor: str | None,
-) -> str:
-    header = str(header_actor or "").strip()
-    payload = str(payload_actor or "").strip()
-
-    if header and payload and header != payload:
-        raise HTTPException(
-            status_code=403,
-            detail="Actor mismatch: header and payload actors differ. Use the session actor.",
-        )
-
-    actor = header or payload
-    if not actor:
-        raise HTTPException(status_code=400, detail="Actor username is required.")
-    if len(actor) > 128:
-        raise HTTPException(status_code=400, detail="Actor username is too long.")
-    return actor
 
 
 def _reset_security_state_for_tests() -> None:

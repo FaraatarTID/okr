@@ -30,13 +30,7 @@ def require_control_plane_operator(actor: str) -> None:
             status_code=503,
             detail="Control-plane operator allowlist is required in production.",
         )
-    import sys
-
-    main_module = sys.modules.get("backend_app.main")
-    admin_scope = getattr(
-        main_module, "_require_admin_actor_scope", _require_admin_actor_scope
-    )
-    admin_scope(actor)
+    _require_admin_actor_scope(actor)
 
 
 async def require_authenticated_principal(request: Request) -> dict[str, str]:

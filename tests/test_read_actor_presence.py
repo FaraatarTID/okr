@@ -97,17 +97,17 @@ def read_client(monkeypatch, isolated_db):
 def test_actorless_read_is_rejected_before_scope_or_data_access(
     read_client, monkeypatch, kind, section, params_for
 ):
-    import backend_app.main as backend_main
+    import backend_app.scope_resolution as scopes
 
     client, ids = read_client
     reached_scope = []
-    original_resolver = backend_main._resolve_scope_for_actor
+    original_resolver = scopes._resolve_scope_for_actor
 
     def tracked_scope(actor, *args, **kwargs):
         reached_scope.append(actor)
         return original_resolver(actor, *args, **kwargs)
 
-    monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", tracked_scope)
+    monkeypatch.setattr(scopes, "_resolve_scope_for_actor", tracked_scope)
     response = client.post(
         "/v1/read/query",
         json={"kind": kind, "params": params_for(ids)},

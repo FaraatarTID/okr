@@ -6,7 +6,7 @@ from typing import Any, Optional
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from backend_app.security import resolve_actor_username
+from backend_app.actor_identity import resolve_actor_username
 from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mode
 from src.crud import get_active_cycles, get_all_cycles
 from src.database import get_session_context

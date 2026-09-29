@@ -352,19 +352,54 @@ def test_production_control_plane_operator_requires_explicit_allowlist(
 def test_nonproduction_control_plane_keeps_explicit_admin_compatibility(
     monkeypatch,
 ) -> None:
-    import backend_app.main as backend_main
+    import backend_app.authentication as authentication
 
     called: list[str] = []
     monkeypatch.setenv("OKR_ENV", "development")
     monkeypatch.delenv("OKR_RUNTIME_ENV", raising=False)
     monkeypatch.delenv("OKR_CONTROL_PLANE_OPERATORS", raising=False)
     monkeypatch.setattr(
-        backend_main, "_require_admin_actor_scope", lambda actor: called.append(actor)
+        authentication, "_require_admin_actor_scope", lambda actor: called.append(actor)
     )
 
-    backend_main.require_control_plane_operator("admin")
+    authentication.require_control_plane_operator("admin")
 
     assert called == ["admin"]
+
+
+def test_allowlisted_operator_is_admitted_without_the_admin_lookup(monkeypatch) -> None:
+    import backend_app.authentication as authentication
+
+    monkeypatch.setenv("OKR_ENV", "production")
+    monkeypatch.setenv("OKR_CONTROL_PLANE_OPERATORS", "ops-1, ops-2")
+
+    def _no_lookup(actor: str) -> None:
+        raise AssertionError(
+            "an explicit allowlist must not fall back to the admin role"
+        )
+
+    monkeypatch.setattr(authentication, "_require_admin_actor_scope", _no_lookup)
+
+    authentication.require_control_plane_operator("ops-2")
+
+
+@pytest.mark.parametrize("environment", ["production", "development"])
+def test_actor_outside_the_allowlist_is_refused_in_every_environment(
+    monkeypatch, environment
+) -> None:
+    """An admin is refused too: once an allowlist exists it is the only path."""
+    import backend_app.authentication as authentication
+
+    monkeypatch.setenv("OKR_ENV", environment)
+    monkeypatch.setenv("OKR_CONTROL_PLANE_OPERATORS", "ops-1")
+    monkeypatch.setattr(
+        authentication, "_require_admin_actor_scope", lambda actor: None
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        authentication.require_control_plane_operator("admin")
+
+    assert exc.value.status_code == 403
 
 
 def test_production_backend_app_registers_control_plane_routes(
