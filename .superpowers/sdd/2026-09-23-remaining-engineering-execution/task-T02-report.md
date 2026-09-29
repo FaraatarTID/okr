@@ -38,3 +38,5 @@ Status: complete locally after independent review PASS.
 - Fresh repository-wide mypy command (`--no-incremental --ignore-missing-imports --follow-imports=skip backend_app src scripts tests`): **2 errors remain across 380 checked files**, both in unowned `backend_app/read_query_helpers.py` (line 194 arg-type and line 553 arg-type). The prior third T02-reserved error in `src/services/supabase_api_mode_read.py` is resolved.
 
 No alignment-context API, `node.get` serializer, shared ledger, generated artifact, workflow, or T32 budget-harness files were changed.
+
+T02 scope/mypy follow-up (2026-09-26): the HTTPS cycle path now fails closed with a fixed 503 if the actor scope is absent, and the itual.snapshot RPC/fan-out branch applies the same check to both its initial scope and weekly_plan.active scope result. The team filter explicitly rejects rows with no team ID before coercion. New regressions demonstrated the snapshot dispatch failures before the guards were added. Final focused parity/Supabase tests: 73 passed; scoped mypy and Ruff passed. Independent follow-up review PASS: 	ask-T02-scope-followup-review.md.

@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 def _make_client(monkeypatch):
     import backend_app.main as backend_main
+    import backend_app.security as backend_security
 
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "false")
@@ -15,7 +16,21 @@ def _make_client(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS", "10000")
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
-    return TestClient(backend_main.app), backend_main
+    monkeypatch.setattr(
+        backend_security,
+        "_resolve_current_actor_scope",
+        lambda actor, token_version: {
+            "actor_id": 1,
+            "actor_username": actor,
+            "role": "admin" if actor == "admin" else "member",
+        },
+    )
+    client = TestClient(backend_main.app)
+    client.headers.update({"x-okr-token-version": "1"})
+    from tests.session_registry_test_support import attach_registered_test_session
+
+    attach_registered_test_session(client)
+    return client, backend_main
 
 
 def _with_dbless_admin_gate(monkeypatch, admin_user: str = "admin") -> None:
@@ -86,6 +101,7 @@ def test_backend_read_exposes_framework_lifecycle_timing(monkeypatch):
 
     response = client.post(
         "/v1/read/query",
+        headers={"X-OKR-Actor": "admin"},
         json={"kind": "users.all", "params": {}, "actor_username": "admin"},
     )
 

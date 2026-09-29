@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 
-import { resetUserPasswordMutation } from "@/lib/api/admin";
-import type { AuthUser } from "@/lib/api/auth";
+import { changeOwnPassword, type AuthUser } from "@/lib/api/auth";
 
 export default function PasswordChangePanel({
   user,
@@ -15,6 +14,7 @@ export default function PasswordChangePanel({
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(!compact);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -24,18 +24,22 @@ export default function PasswordChangePanel({
   async function handleSubmit(): Promise<void> {
     setError("");
     setSuccess("");
+    if (!currentPassword) {
+      setError("Enter your current password.");
+      return;
+    }
     if (!newPassword || newPassword !== confirmPassword) {
       setError("Passwords must match.");
       return;
     }
     setPending(true);
     try {
-      await resetUserPasswordMutation({
-        actor_username: user.username,
-        user_id: user.id,
+      await changeOwnPassword({
+        username: user.username,
+        current_password: currentPassword,
         new_password: newPassword,
-        require_change: false,
       });
+      setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
       setSuccess("Password updated successfully.");
@@ -58,7 +62,16 @@ export default function PasswordChangePanel({
   return (
     <section className={compact ? "panel" : "panel login-shell-card"}>
       <h2 style={{ marginTop: 0 }}>Change your password</h2>
-      <p className="login-feedback">Choose a new password for your account.</p>
+      <p className="login-feedback">Verify your current password, then choose a new one.</p>
+      <label htmlFor="current-password" className="login-label">Current password</label>
+      <input
+        id="current-password"
+        className="input login-field"
+        type="password"
+        value={currentPassword}
+        onChange={(event) => setCurrentPassword(event.target.value)}
+        autoComplete="current-password"
+      />
       <label htmlFor="new-password" className="login-label">New password</label>
       <input
         id="new-password"
@@ -81,9 +94,9 @@ export default function PasswordChangePanel({
         className="primary-button"
         type="button"
         onClick={handleSubmit}
-        disabled={pending || !newPassword || !confirmPassword}
+        disabled={pending || !currentPassword || !newPassword || !confirmPassword}
       >
-        {pending ? "Updating..." : "Set new password"}
+        {pending ? "Updating..." : "Change password"}
       </button>
       {error ? <p className="login-feedback">{error}</p> : null}
       {success ? <p role="status" className="login-feedback">{success}</p> : null}

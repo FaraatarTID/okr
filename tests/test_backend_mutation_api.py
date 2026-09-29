@@ -36,6 +36,7 @@ from backend_app.schemas import (
 
 def _make_client(monkeypatch):
     import backend_app.main as backend_main
+    import backend_app.security as backend_security
 
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "false")
@@ -45,7 +46,24 @@ def _make_client(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS", "10000")
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
-    return TestClient(backend_main.app), backend_main
+    monkeypatch.setattr(
+        backend_security,
+        "_resolve_current_actor_scope",
+        lambda actor, token_version=None: {
+            "actor_id": 1,
+            "actor_username": actor,
+            "role": "member",
+            "is_admin": False,
+            "owner_ids": {1},
+            "usernames": {actor},
+        },
+    )
+    client = TestClient(backend_main.app)
+    client.headers.update({"x-okr-token-version": "1"})
+    from tests.session_registry_test_support import attach_registered_test_session
+
+    attach_registered_test_session(client)
+    return client, backend_main
 
 
 _ROUTER_CONTRACTS = {

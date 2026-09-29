@@ -23,6 +23,8 @@ EXCLUDED_PATHS = {
     "/healthz",
     "/v1/admin/observability/metrics",
     "/control-plane/v1/rollouts/{rollout_id}",
+    "/v1/internal/session-registry/register",
+    "/v1/internal/session-registry/revoke",
 }
 
 # These tighter expressions preserve existing BFF validation for enumerated path values.

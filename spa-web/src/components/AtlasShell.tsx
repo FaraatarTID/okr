@@ -1,7 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { type ComponentProps, type ReactNode, useMemo, useState } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -31,6 +37,7 @@ import {
 } from "@/components/atlas-shell/nodeMutation";
 import { selectedNodeDetails } from "@/components/atlas-shell/inspectorDetails";
 import type AdminModePanelComponent from "@/components/atlas-shell/AdminModePanel";
+import PasswordChangePanel from "@/components/PasswordChangePanel";
 import type { AdminTab } from "@/components/atlas-shell/AdminModePanel";
 import type DashboardLeadershipPanelComponent from "@/components/atlas-shell/DashboardLeadershipPanel";
 import type TimelineModePanelComponent from "@/components/atlas-shell/TimelineModePanel";
@@ -93,7 +100,6 @@ import {
   buildMindmapTree,
   findMindmapNodeTitle,
   isGenericIndexedTitle,
-  type MindmapTreeNode,
 } from "@/components/atlas-shell/shellMindmapUtils";
 import {
   cycleDisplayLabel,
@@ -203,9 +209,9 @@ export function ShellAccessGate({
 
 export default function AtlasShell() {
   const router = useRouter();
+  const routerReplace = useCallback((href: string) => router.replace(href), [router]);
   const [cycleId, setCycleId] = useState("");
   const [resolvedCycle, setResolvedCycle] = useState<ResolvedCycle | null>(null);
-  const [cycleResolvePending, setCycleResolvePending] = useState(false);
   const [cycleResolveError, setCycleResolveError] = useState("");
   const [sessionCycles, setSessionCycles] = useState<CycleSummary[]>([]);
   const [adminTab, setAdminTab] = useState<AdminTab>("cycles");
@@ -452,7 +458,6 @@ export default function AtlasShell() {
     setAdminTeamDraft,
     adminResetDraft,
     setAdminResetDraft,
-    adminBackupFile,
     setAdminBackupFile,
     adminBackupConfirm,
     setAdminBackupConfirm,
@@ -932,7 +937,6 @@ export default function AtlasShell() {
     deepLinkReady,
     deepLinkQuery,
     setResolvedCycle,
-    setCycleResolvePending,
     setCycleResolveError,
     setSessionCycles,
     setCycleId,
@@ -943,7 +947,7 @@ export default function AtlasShell() {
     setDeepLinkReady,
   });
   const { handleSidebarModeSelect, handleOpenTaskInAtlas } = useAtlasNavigation({
-    routerReplace: (href) => router.replace(href),
+    routerReplace,
     cycleId: effectiveCycleId,
     selectedRef,
     focusTaskRef,
@@ -1179,7 +1183,6 @@ export default function AtlasShell() {
     createPending,
     createError,
     createMessage,
-    canCreateForContext,
     createDraft,
     setCreateDraft,
     deletePending,
@@ -1282,6 +1285,7 @@ export default function AtlasShell() {
 
   const { accessReady, handleSignOut } = useShellAccessControl({
     authHydrated,
+    deepLinkReady,
     user,
     isAdmin,
     isManager,
@@ -1291,45 +1295,13 @@ export default function AtlasShell() {
     adminAiHealth,
     adminPdfHealth,
     adminAuditSummary,
-    routerReplace: (href) => router.replace(href),
-    handleSidebarModeSelect,
+    routerReplace,
     loadAdminResources,
     loadAdminHealth,
     loadAdminAuditSummary,
     setUser,
     clearSnapshot,
   });
-
-  function renderMindmapTreeNode(node: MindmapTreeNode, depth = 0) {
-    const nodeRef =
-      node.id && (node.type === "GOAL" || node.type === "OBJECTIVE" || node.type === "KEY_RESULT" || node.type === "TASK")
-        ? `${node.type === "KEY_RESULT" ? "key_result" : node.type.toLowerCase()}_${node.id}`
-        : "";
-    return (
-      <div key={`${node.type}-${node.id || node.title}-${depth}`} style={{ marginTop: depth === 0 ? 0 : "0.28rem" }}>
-        <button
-          type="button"
-          className={`atlas-node-item${nodeRef && selectedRef === nodeRef ? " is-active" : ""}`}
-          style={{ width: "100%", paddingLeft: `${0.65 + depth * 0.85}rem` }}
-          onClick={() => {
-            if (!nodeRef) {
-              return;
-            }
-            setSelectedRef(nodeRef);
-            if (node.type === "TASK") {
-              setFocusTaskRef(nodeRef);
-            }
-          }}
-          disabled={!nodeRef}
-        >
-          <span className="atlas-node-tag">{node.type === "KEY_RESULT" ? "KR" : node.type === "NODE" ? "N" : node.type.charAt(0)}</span>
-          <span className="atlas-node-title">{node.title}</span>
-          <span className="atlas-node-progress">{node.progress !== null ? `${Math.round(node.progress)}%` : "-"}</span>
-        </button>
-        {node.children.map((child) => renderMindmapTreeNode(child, depth + 1))}
-      </div>
-    );
-  }
 
   if (!accessReady || !user) {
     return (
@@ -1482,6 +1454,7 @@ export default function AtlasShell() {
           >
             <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>Signed in as</div>
             <strong style={{ display: "block", marginTop: "0.2rem" }}>{user.display_name}</strong>
+            <PasswordChangePanel user={user} compact />
             <button
               className="primary-button"
               type="button"

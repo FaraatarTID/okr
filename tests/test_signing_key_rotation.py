@@ -14,13 +14,15 @@ import hashlib
 import hmac
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 _CURRENT_SECRET = "current-signing-secret-0123456789abcdef"
 _PREVIOUS_SECRET = "previous-signing-secret-fedcba9876543210"
+_SESSION_ID = "signing-key-rotation-session"
+_SESSION_ACTOR = "1"
 
 
 def _sign_request(
@@ -33,7 +35,17 @@ def _sign_request(
     body: bytes,
 ) -> str:
     body_digest = hashlib.sha256(body or b"").hexdigest()
-    payload = "\n".join([method.upper(), path, timestamp, nonce, body_digest])
+    payload = "\n".join(
+        [
+            method.upper(),
+            path,
+            timestamp,
+            nonce,
+            body_digest,
+            f"session_id:{_SESSION_ID.encode().hex()}",
+            f"session_actor:{_SESSION_ACTOR.encode().hex()}",
+        ]
+    )
     return hmac.new(
         secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
     ).hexdigest()
@@ -42,6 +54,7 @@ def _sign_request(
 def _make_client(monkeypatch, *, advertise_key_id: bool = True) -> TestClient:
     import backend_app.main as backend_main
     import backend_app.security as backend_security
+    import backend_app.security_state as security_state
 
     monkeypatch.setenv("OKR_ENV", "development")
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
@@ -55,6 +68,11 @@ def _make_client(monkeypatch, *, advertise_key_id: bool = True) -> TestClient:
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "memory")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
     backend_security._reset_security_state_for_tests()
+    security_state.register_session(
+        session_digest=hashlib.sha256(_SESSION_ID.encode()).hexdigest(),
+        actor_id=_SESSION_ACTOR,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
     monkeypatch.setattr(
         backend_main,
         "start_timer",
@@ -67,7 +85,18 @@ def _make_client(monkeypatch, *, advertise_key_id: bool = True) -> TestClient:
             start_time=datetime.now(timezone.utc),
         ),
     )
-    return TestClient(backend_main.app)
+    monkeypatch.setattr(
+        backend_security,
+        "_resolve_current_actor_scope",
+        lambda actor, token_version: {
+            "actor_id": 1,
+            "actor_username": actor,
+            "role": "member",
+        },
+    )
+    client = TestClient(backend_main.app)
+    client.headers.update({"x-okr-token-version": "1"})
+    return client
 
 
 def _signed_post(
@@ -91,6 +120,8 @@ def _signed_post(
     headers = {
         "Content-Type": "application/json",
         "X-OKR-Actor": "alice",
+        "X-OKR-Session-Id": _SESSION_ID,
+        "X-OKR-Session-Actor": _SESSION_ACTOR,
         "X-OKR-Timestamp": timestamp,
         "X-OKR-Nonce": nonce,
         "X-OKR-Signature": signature,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def test_broadcast_cache_invalidation_uses_monotonic_ns_signal(monkeypatch):
     import src.services.distributed_state_service as service
@@ -38,3 +40,24 @@ def test_get_last_invalidation_timestamp_parses_int_or_returns_zero(monkeypatch)
 
     monkeypatch.setattr(service, "get_distributed_state", lambda _key: None)
     assert service.get_last_invalidation_timestamp() == 0
+
+
+def test_cache_invalidation_state_uses_fixed_internal_client(monkeypatch):
+    import src.services.distributed_state_service as service
+
+    calls = []
+
+    def internal_call(*, method, timestamp=None):
+        calls.append((method, timestamp))
+        return {"value": "1729", "status": "updated"}
+
+    monkeypatch.setattr(service, "request_internal_cache_invalidation", internal_call)
+    monkeypatch.setattr(
+        service,
+        "_request_json",
+        lambda **_kwargs: pytest.fail("generic state API must not handle cache key"),
+    )
+
+    assert service.set_distributed_state(service.KEY_CACHE_INVALIDATION_TS, "1729")
+    assert service.get_distributed_state(service.KEY_CACHE_INVALIDATION_TS) == "1729"
+    assert calls == [("POST", "1729"), ("GET", None)]

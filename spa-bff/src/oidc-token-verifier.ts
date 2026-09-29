@@ -26,6 +26,18 @@ export interface OidcTokenVerifier {
   verify(token: string, expectedNonce: string): Promise<Readonly<JWTPayload>>;
 }
 
+export type OidcEmailVerificationCode =
+  | "EMAIL_VERIFICATION_MISSING"
+  | "EMAIL_NOT_VERIFIED"
+  | "EMAIL_VERIFICATION_INVALID";
+
+export class OidcEmailVerificationError extends Error {
+  constructor(readonly code: OidcEmailVerificationCode) {
+    super(code);
+    this.name = "OidcEmailVerificationError";
+  }
+}
+
 function constantTimeStringEqual(left: string, right: string): boolean {
   const leftDigest = createHash("sha256").update(left, "utf8").digest();
   const rightDigest = createHash("sha256").update(right, "utf8").digest();
@@ -171,6 +183,15 @@ export function createOidcTokenVerifier(options: OidcTokenVerifierOptions): Oidc
       }
       if (typeof payload.nonce !== "string" || !constantTimeStringEqual(payload.nonce, expectedNonce)) {
         throw new Error("ID token nonce does not match");
+      }
+      if (payload.email_verified === undefined) {
+        throw new OidcEmailVerificationError("EMAIL_VERIFICATION_MISSING");
+      }
+      if (typeof payload.email_verified !== "boolean") {
+        throw new OidcEmailVerificationError("EMAIL_VERIFICATION_INVALID");
+      }
+      if (!payload.email_verified) {
+        throw new OidcEmailVerificationError("EMAIL_NOT_VERIFIED");
       }
       return Object.freeze({ ...payload });
     },

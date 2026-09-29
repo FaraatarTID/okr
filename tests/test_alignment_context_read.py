@@ -44,7 +44,7 @@ def read_alignment_client(monkeypatch, isolated_db):
     monkeypatch.setenv("OKR_DATA_ACCESS_MODE", "database")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
 
-    create_user("alignment_reader", "reader-pass")
+    reader = create_user("alignment_reader", "reader-pass")
     cycle = create_cycle(
         "Alignment read cycle",
         start_date=utc_now_naive(),
@@ -73,4 +73,8 @@ def read_alignment_client(monkeypatch, isolated_db):
         session.commit()
 
     with TestClient(backend_main.app) as client:
+        client.headers.update({"x-okr-token-version": "1"})
+        from tests.session_registry_test_support import attach_registered_test_session
+
+        attach_registered_test_session(client, actor_id=reader.id)
         yield client, parent.id, child.id

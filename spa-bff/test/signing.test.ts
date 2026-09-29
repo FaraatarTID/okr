@@ -19,6 +19,33 @@ describe("signing helpers", () => {
     expect(payload).toBe("POST\n/v1/read/query\n1700000000\nabc123\ndeadbeef");
   });
 
+  it("matches the backend canonical format when session assertions are present", () => {
+    const payload = canonicalSigningPayload({
+      method: "post",
+      path: "/v1/read/query",
+      timestamp: "1700000000",
+      nonce: "abc123",
+      bodyDigest: "deadbeef",
+      sessionId: "sid-42",
+      sessionActor: "19",
+    });
+    expect(payload).toBe(
+      "POST\n/v1/read/query\n1700000000\nabc123\ndeadbeef\nsession_id:7369642d3432\nsession_actor:3139",
+    );
+  });
+
+  it("uses explicit missing slots when only one session assertion is present", () => {
+    const payload = canonicalSigningPayload({
+      method: "GET",
+      path: "/v1/auth/me",
+      timestamp: "1700000000",
+      nonce: "abc123",
+      bodyDigest: "deadbeef",
+      sessionId: "sid-42",
+    });
+    expect(payload.endsWith("session_id:7369642d3432\nsession_actor:-")).toBe(true);
+  });
+
   it("produces deterministic signature for fixed input", () => {
     const body = new TextEncoder().encode('{"kind":"atlas_snapshot"}');
     const digest = bodyDigestHex(body);

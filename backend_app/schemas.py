@@ -15,6 +15,20 @@ ensure_shared_src_on_path()
 from src.domain.password_policy import validate_password_policy
 
 
+class InternalSessionRegisterRequest(BaseModel):
+    session_id: str = Field(..., min_length=16, max_length=512)
+    actor_id: int = Field(..., gt=0)
+    expires_at: datetime
+
+
+class InternalSessionRevokeRequest(BaseModel):
+    session_id: str = Field(..., min_length=16, max_length=512)
+
+
+class InternalSessionRegistryResponse(BaseModel):
+    status: Literal["registered", "revoked"]
+
+
 class TimerStartRequest(BaseModel):
     task_id: int = Field(..., gt=0)
     user_id: Optional[str] = None
@@ -679,6 +693,21 @@ class AuthLoginResponse(BaseModel):
 
 class AuthSessionResponse(AuthUserView):
     pass
+
+
+class AuthPasswordChangeRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=512)
+    new_password: str = Field(..., min_length=8, max_length=512)
+
+    @field_validator("new_password")
+    @classmethod
+    def _validate_new_password_policy(cls, value: str) -> str:
+        validate_password_policy(value, field_name="New password")
+        return value
+
+
+class AuthPasswordChangeResponse(BaseModel):
+    updated: bool
 
 
 class ReadQueryRequest(BaseModel):

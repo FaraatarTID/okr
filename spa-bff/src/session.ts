@@ -5,20 +5,14 @@ const CSRF_COOKIE_NAME = "okr_csrf_token";
 const SESSION_VERSION = "v1";
 
 /**
- * In-process session registry.
- *
- * MEMORY LIMITATION, deliberate and documented: entries are released by EXPIRY ONLY
- * (see pruneExpiredSessions). A record for a session that is never presented again is
- * therefore held until its credential expires, and one that is never looked up after
- * expiry is only reclaimed by the next issuance. There is deliberately no size cap,
- * because evicting an unexpired record would discard revocation state while the signed
- * credential is still acceptable - and an unknown id is reported as ACTIVE below, so that
- * would recreate the replay defect. A cap cannot be added without first changing the
- * unknown-id policy, which this fix does not do.
- *
- * The registry is per-process, so it provides no revocation across instances or restarts.
+ * Deferred T19/T34 bookkeeping only. This map never participates in cookie verification,
+ * proxy authorization, or session registration/revocation. The backend shared registry is
+ * the sole per-session authority; identity-wide revocation remains unwired pending T19.
  */
-const ACTIVE_SESSION_REGISTRY = new Map<string, { revoked: boolean; expiresAt: number; externalSubject?: string }>();
+const DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING = new Map<
+  string,
+  { externalSubject: string; expiresAtEpochSeconds: number }
+>();
 
 export interface SessionUser {
   id: number;
@@ -65,15 +59,28 @@ export function issueSessionToken(input: {
   nowEpochSeconds?: number;
   ttlSeconds: number;
 }): string {
+  return createSessionCredential(input).token;
+}
+
+export interface SessionCredential {
+  token: string;
+  sessionId: string;
+  expiresAtEpochSeconds: number;
+  user: SessionUser;
+}
+
+export function createSessionCredential(input: {
+  user: SessionUser;
+  secret: string;
+  nowEpochSeconds?: number;
+  ttlSeconds: number;
+}): SessionCredential {
   const nowEpochSeconds =
     Number.isFinite(input.nowEpochSeconds) && Number(input.nowEpochSeconds) > 0
       ? Math.floor(Number(input.nowEpochSeconds))
       : Math.floor(Date.now() / 1000);
 
   const sessionId = randomBytes(16).toString("hex");
-  // Opportunistic, expiry-only sweep. Issuance is the natural low-frequency point for it,
-  // and it keeps the retained-record growth bounded without ever evicting a live one.
-  pruneExpiredSessions(nowEpochSeconds);
   const payload: SessionPayload = {
     v: SESSION_VERSION,
     iat: nowEpochSeconds,
@@ -82,110 +89,56 @@ export function issueSessionToken(input: {
     user: input.user,
   };
 
-  ACTIVE_SESSION_REGISTRY.set(sessionId, {
-    revoked: false,
-    expiresAt: payload.exp,
-    externalSubject: String(input.user.external_subject ?? "").trim() || undefined,
-  });
+  pruneDeferredExternalSubjectBookkeeping(nowEpochSeconds);
+  const externalSubject = String(input.user.external_subject ?? "").trim();
+  if (externalSubject) {
+    DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING.set(sessionId, {
+      externalSubject,
+      expiresAtEpochSeconds: payload.exp,
+    });
+  }
 
   const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload), "utf-8"));
   const signature = signatureForPayload(payloadB64, input.secret);
-  return `${payloadB64}.${signature}`;
+  return {
+    token: `${payloadB64}.${signature}`,
+    sessionId,
+    expiresAtEpochSeconds: payload.exp,
+    user: input.user,
+  };
 }
 
-function extractSessionIdFromToken(token: string): string | null {
-  const rawToken = String(token || "").trim();
-  if (!rawToken) {
-    return null;
-  }
-  const separator = rawToken.indexOf(".");
-  if (separator <= 0 || separator >= rawToken.length - 1) {
-    return null;
-  }
-
-  const payloadB64 = rawToken.slice(0, separator);
-  try {
-    const payload = JSON.parse(base64UrlDecode(payloadB64).toString("utf-8")) as Partial<SessionPayload>;
-    const sid = String(payload.sid ?? "").trim();
-    return sid || null;
-  } catch {
-    return null;
+function pruneDeferredExternalSubjectBookkeeping(nowEpochSeconds: number): void {
+  for (const [sessionId, record] of DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING) {
+    if (record.expiresAtEpochSeconds < nowEpochSeconds) {
+      DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING.delete(sessionId);
+    }
   }
 }
 
-export function revokeSessionToken(token: string): boolean {
-  const sessionId = extractSessionIdFromToken(token);
-  if (!sessionId) {
-    return false;
-  }
-  const record = ACTIVE_SESSION_REGISTRY.get(sessionId);
-  if (!record) {
-    return false;
-  }
-  record.revoked = true;
-  return true;
-}
-
-export function revokeSessionFromCookieHeader(cookieHeader: string | undefined): boolean {
-  const cookies = parseCookieHeader(cookieHeader);
-  const token = String(cookies[SESSION_COOKIE_NAME] || "").trim();
-  return token ? revokeSessionToken(token) : false;
-}
-
-/** Revoke every local application session bound to an external identity subject. */
-export function revokeSessionsForIdentity(externalSubject: string): number {
+/**
+ * Deferred T19/T34 bookkeeping only. This removes helper records but does not revoke or
+ * authenticate browser sessions; no request path calls this helper.
+ */
+export function revokeSessionsForIdentity(
+  externalSubject: string,
+  nowEpochSeconds?: number,
+): number {
+  const now =
+    Number.isFinite(nowEpochSeconds) && Number(nowEpochSeconds) > 0
+      ? Math.floor(Number(nowEpochSeconds))
+      : Math.floor(Date.now() / 1000);
+  pruneDeferredExternalSubjectBookkeeping(now);
   const subject = String(externalSubject || "").trim();
   if (!subject) return 0;
   let revoked = 0;
-  for (const record of ACTIVE_SESSION_REGISTRY.values()) {
-    if (record.externalSubject === subject && !record.revoked) {
-      record.revoked = true;
+  for (const [sessionId, record] of DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING) {
+    if (record.externalSubject === subject) {
+      DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING.delete(sessionId);
       revoked += 1;
     }
   }
   return revoked;
-}
-
-/**
- * Release records whose credential can no longer be accepted.
- *
- * Expiry-only, on purpose. The boundary must match verifySessionToken, which accepts while
- * `exp >= now`, so a record is releasable only once `expiresAt < now`. Pruning at
- * `expiresAt <= now` would drop revocation state during the boundary second in which the
- * token is still acceptable, and the next request would find no record and be allowed.
- */
-function pruneExpiredSessions(nowEpochSeconds: number): void {
-  for (const [sessionId, record] of ACTIVE_SESSION_REGISTRY) {
-    if (record.expiresAt < nowEpochSeconds) {
-      ACTIVE_SESSION_REGISTRY.delete(sessionId);
-    }
-  }
-}
-
-function isSessionRegistryActive(sessionId: string | null | undefined, nowEpochSeconds?: number): boolean {
-  if (!sessionId) {
-    return true;
-  }
-  const record = ACTIVE_SESSION_REGISTRY.get(sessionId);
-  if (!record) {
-    return true;
-  }
-  const currentTime = Number.isFinite(nowEpochSeconds) ? Math.floor(Number(nowEpochSeconds)) : Math.floor(Date.now() / 1000);
-
-  // Same boundary as verifySessionToken's own `exp` check: the credential is acceptable
-  // while `exp >= now`, so the record must survive until `expiresAt < now`. Releasing it
-  // any earlier leaves the "unknown id" branch above - which reports the session ACTIVE -
-  // to answer the next request.
-  if (record.expiresAt < currentTime) {
-    ACTIVE_SESSION_REGISTRY.delete(sessionId);
-    return false;
-  }
-  // Revoked and still within the credential's lifetime: RETAINED, so every replay is
-  // rejected rather than only the first. This must not delete the record.
-  if (record.revoked) {
-    return false;
-  }
-  return true;
 }
 
 function normalizeSessionUser(value: unknown): SessionUser | null {
@@ -215,16 +168,16 @@ function normalizeSessionUser(value: unknown): SessionUser | null {
     team_id: user.team_id == null ? null : Number(user.team_id),
     manager_id: user.manager_id == null ? null : Number(user.manager_id),
     must_change_password: Boolean(user.must_change_password),
-    token_version: user.token_version == null ? undefined : Number(user.token_version),
+    token_version: typeof user.token_version === "number" ? user.token_version : undefined,
     external_subject: user.external_subject == null ? undefined : String(user.external_subject).trim() || undefined,
   };
 }
 
-export function verifySessionToken(input: {
+export function verifySessionTokenClaims(input: {
   token: string;
   secret: string;
   nowEpochSeconds?: number;
-}): SessionUser | null {
+}): SessionCredential | null {
   const rawToken = String(input.token || "").trim();
   if (!rawToken) {
     return null;
@@ -270,11 +223,27 @@ export function verifySessionToken(input: {
   }
 
   const sessionId = String(payload.sid ?? "").trim();
-  if (!isSessionRegistryActive(sessionId, nowEpochSeconds)) {
+  if (!sessionId) {
     return null;
   }
+  const user = normalizeSessionUser(payload.user);
+  if (!user) {
+    return null;
+  }
+  return {
+    token: rawToken,
+    sessionId,
+    expiresAtEpochSeconds: exp,
+    user,
+  };
+}
 
-  return normalizeSessionUser(payload.user);
+export function verifySessionToken(input: {
+  token: string;
+  secret: string;
+  nowEpochSeconds?: number;
+}): SessionUser | null {
+  return verifySessionTokenClaims(input)?.user ?? null;
 }
 
 export function parseCookieHeader(rawHeader: string | undefined): Record<string, string> {
@@ -310,12 +279,19 @@ export function readSessionUserFromCookie(input: {
   cookieHeader: string | undefined;
   secret: string;
 }): SessionUser | null {
+  return readSessionCredentialFromCookie(input)?.user ?? null;
+}
+
+export function readSessionCredentialFromCookie(input: {
+  cookieHeader: string | undefined;
+  secret: string;
+}): SessionCredential | null {
   const cookies = parseCookieHeader(input.cookieHeader);
   const token = String(cookies[SESSION_COOKIE_NAME] || "").trim();
   if (!token) {
     return null;
   }
-  return verifySessionToken({
+  return verifySessionTokenClaims({
     token,
     secret: input.secret,
   });

@@ -56,7 +56,7 @@ def authenticate_user_detailed_via_supabase_api(
         "/rest/v1/user",
         query={
             "username": f"eq.{normalized_username}",
-            "select": "id,username,password_hash,must_change_password,display_name,role,manager_id,team_id,is_active",
+            "select": "id,username,password_hash,must_change_password,display_name,role,manager_id,team_id,is_active,token_version",
             "limit": "1",
         },
     )
@@ -114,6 +114,7 @@ def authenticate_user_detailed_via_supabase_api(
         team_id=row.get("team_id"),
         is_active=row.get("is_active", True),
         must_change_password=row.get("must_change_password", False),
+        token_version=row.get("token_version"),
     )
     return {
         "user": user_obj,

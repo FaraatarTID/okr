@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+import importlib
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -7,20 +17,25 @@ from typing import Any, TypedDict
 from urllib.error import URLError
 from urllib.request import urlopen
 
-import os
-import shutil
-import socket
-import subprocess
-import sys
-import time
-
 import pytest
+from tests._test_credentials import credential_password
 
 
 pytestmark = [pytest.mark.e2e, pytest.mark.integration]
 
 
 _RUN_E2E_ENV = "OKR_RUN_PLAYWRIGHT_SPA_E2E"
+_AUTHENTICATED_SHELL_ROUTES = {
+    "/",
+    "/dashboard",
+    "/admin",
+    "/check-in",
+    "/daily",
+    "/weekly",
+    "/timeline",
+    "/ritual",
+    "/retrobox",
+}
 
 _TEST_PASSWORD = "E2E-Atlas-Password-123"
 _E2E_ROLES: dict[str, tuple[str, str]] = {
@@ -28,12 +43,193 @@ _E2E_ROLES: dict[str, tuple[str, str]] = {
     "manager": ("e2e_manager", _TEST_PASSWORD),
     "member": ("e2e_member", _TEST_PASSWORD),
 }
+_PASSWORD_CHANGE_USERNAME = "e2e_password_change"
+_PASSWORD_CHANGE_INITIAL_PASSWORD = (
+    f"Aa1!{credential_password('e2e_password_change_initial')}"
+)
 
 
 class _JobResponse(TypedDict):
     status: int
     status_text: str
     url: str
+
+
+_NEXT_TYPEGEN_FILES = ("next-env.d.ts", "tsconfig.json")
+
+
+def _session_read_identity(source_path: str | None, status: int) -> str:
+    if source_path == "/login" and status == 401:
+        return "session.me.login_probe"
+    if source_path in _AUTHENTICATED_SHELL_ROUTES and status == 200:
+        return "session.me"
+    return "session.me.unexpected"
+
+
+def _capture_next_typegen_files(spa_root: Path) -> dict[str, bytes | None]:
+    return {
+        name: (spa_root / name).read_bytes() if (spa_root / name).is_file() else None
+        for name in _NEXT_TYPEGEN_FILES
+    }
+
+
+def _expected_next_env_after_typegen(original: bytes, port: int) -> bytes | None:
+    expected = original
+    for type_file in (b"routes.d.ts", b"root-params.d.ts"):
+        default_ref = b"./.next/dev/types/" + type_file
+        e2e_ref = f"./.next/e2e-{port}/dev/types/".encode() + type_file
+        if expected.count(default_ref) != 1:
+            return None
+        expected = expected.replace(default_ref, e2e_ref, 1)
+    return expected
+
+
+def _expected_tsconfig_after_typegen(original: bytes, port: int) -> bytes | None:
+    pattern = re.compile(rb'(?m)^([\t ]*)"\.next/dev/types/\*\*/\*\.ts"(,?)(\r?\n)')
+    matches = list(pattern.finditer(original))
+    if len(matches) != 1:
+        return None
+
+    match = matches[0]
+    indent, comma, newline = match.groups()
+    separator = comma or b","
+    e2e_root = f".next/e2e-{port}".encode()
+    replacement = b"".join(
+        (
+            indent,
+            b'".next/dev/types/**/*.ts"',
+            separator,
+            newline,
+            indent,
+            b'"',
+            e2e_root,
+            b'/types/**/*.ts",',
+            newline,
+            indent,
+            b'"',
+            e2e_root,
+            b'/dev/types/**/*.ts"',
+            newline,
+        )
+    )
+    return original[: match.start()] + replacement + original[match.end() :]
+
+
+def _normalize_typegen_line_endings(contents: bytes) -> bytes:
+    """Next may rewrite generated type references with CRLF on Windows."""
+    return contents.replace(b"\r\n", b"\n")
+
+
+def _restore_next_typegen_files(
+    spa_root: Path, port: int, snapshot: dict[str, bytes | None]
+) -> set[str]:
+    expected_generations = {
+        "next-env.d.ts": _expected_next_env_after_typegen(
+            snapshot.get("next-env.d.ts") or b"", port
+        ),
+        "tsconfig.json": _expected_tsconfig_after_typegen(
+            snapshot.get("tsconfig.json") or b"", port
+        ),
+    }
+    restored: set[str] = set()
+    for name, original in snapshot.items():
+        if original is None:
+            continue
+        path = spa_root / name
+        if not path.is_file():
+            continue
+        generated = expected_generations.get(name)
+        if generated is None or _normalize_typegen_line_endings(
+            path.read_bytes()
+        ) != _normalize_typegen_line_endings(generated):
+            continue
+        path.write_bytes(original)
+        restored.add(name)
+    return restored
+
+
+def test_session_read_classification_only_exempts_known_login_401() -> None:
+    assert _session_read_identity("/login", 401) == "session.me.login_probe"
+    assert _session_read_identity("/", 200) == "session.me"
+    assert _session_read_identity("/login", 200) == "session.me.unexpected"
+    assert _session_read_identity("/", 401) == "session.me.unexpected"
+    assert _session_read_identity("/admin", 503) == "session.me.unexpected"
+
+
+def test_next_typegen_cleanup_restores_only_exact_run_generated_refs(
+    tmp_path: Path,
+) -> None:
+    spa_root = tmp_path / "spa-web"
+    spa_root.mkdir()
+    next_env = spa_root / "next-env.d.ts"
+    tsconfig = spa_root / "tsconfig.json"
+    original_next_env = (
+        b'/// <reference types="next" />\n'
+        b'import "./.next/dev/types/routes.d.ts";\n'
+        b'import "./.next/dev/types/root-params.d.ts";\n'
+    )
+    original_tsconfig = (
+        b'{\n  "include": [\n'
+        b'    ".next/types/**/*.ts",\n'
+        b'    ".next/dev/types/**/*.ts"\n'
+        b"  ]\n}\n"
+    )
+    next_env.write_bytes(original_next_env)
+    tsconfig.write_bytes(original_tsconfig)
+    snapshot = _capture_next_typegen_files(spa_root)
+
+    next_env.write_bytes(
+        original_next_env.replace(
+            b"./.next/dev/types/", b"./.next/e2e-54321/dev/types/"
+        ).replace(b"\n", b"\r\n")
+    )
+    tsconfig.write_bytes(
+        original_tsconfig.replace(
+            b'    ".next/dev/types/**/*.ts"\n',
+            b'    ".next/dev/types/**/*.ts",\n'
+            b'    ".next/e2e-54321/types/**/*.ts",\n'
+            b'    ".next/e2e-54321/dev/types/**/*.ts"\n',
+        ).replace(b"\n", b"\r\n")
+    )
+
+    restored = _restore_next_typegen_files(spa_root, 54321, snapshot)
+
+    assert restored == {"next-env.d.ts", "tsconfig.json"}
+    assert next_env.read_bytes() == original_next_env
+    assert tsconfig.read_bytes() == original_tsconfig
+
+
+def test_next_typegen_cleanup_preserves_unrelated_changes(tmp_path: Path) -> None:
+    spa_root = tmp_path / "spa-web"
+    spa_root.mkdir()
+    next_env = spa_root / "next-env.d.ts"
+    tsconfig = spa_root / "tsconfig.json"
+    original_next_env = b'import "./.next/dev/types/routes.d.ts";\n'
+    original_tsconfig = b'{\n  "include": [\n    ".next/dev/types/**/*.ts"\n  ]\n}\n'
+    next_env.write_bytes(original_next_env)
+    tsconfig.write_bytes(original_tsconfig)
+    snapshot = _capture_next_typegen_files(spa_root)
+
+    next_env.write_bytes(
+        original_next_env.replace(
+            b"./.next/dev/types/", b"./.next/e2e-54321/dev/types/"
+        )
+        + b"// unrelated edit\n"
+    )
+    tsconfig.write_bytes(
+        original_tsconfig.replace(
+            b'    ".next/dev/types/**/*.ts"\n',
+            b'    ".next/dev/types/**/*.ts",\n'
+            b'    ".next/e2e-54321/types/**/*.ts",\n'
+            b'    ".next/e2e-54321/dev/types/**/*.ts"\n',
+        )
+    )
+
+    restored = _restore_next_typegen_files(spa_root, 54321, snapshot)
+
+    assert restored == {"tsconfig.json"}
+    assert next_env.read_bytes().endswith(b"// unrelated edit\n")
+    assert tsconfig.read_bytes() == original_tsconfig
 
 
 def _truthy(raw: str | None) -> bool:
@@ -57,6 +253,95 @@ def _env_float(name: str, default: float) -> float:
     return float(value) if value > 0 else default
 
 
+def test_resolves_playwright_managed_chromium_without_explicit_or_system_browser(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from types import ModuleType, SimpleNamespace
+
+    browser_path = tmp_path / "playwright-chromium"
+    browser_path.write_bytes(b"browser")
+
+    class _PlaywrightManager:
+        def __enter__(self) -> SimpleNamespace:
+            return SimpleNamespace(
+                chromium=SimpleNamespace(executable_path=str(browser_path))
+            )
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    manager = _PlaywrightManager()
+    playwright_package = ModuleType("playwright")
+    playwright_package.__path__ = []  # type: ignore[attr-defined]
+    sync_api = ModuleType("playwright.sync_api")
+    sync_api.sync_playwright = lambda: manager  # type: ignore[attr-defined]
+    sync_api.Error = RuntimeError  # type: ignore[attr-defined]
+
+    monkeypatch.delenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE", raising=False)
+    monkeypatch.setitem(sys.modules, "playwright", playwright_package)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+    monkeypatch.setattr(Path, "is_file", lambda path: path == browser_path)
+
+    assert _resolve_chromium_executable() == str(browser_path)
+
+
+def test_opted_in_e2e_fails_when_chromium_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_RUN_E2E_ENV, "1")
+    monkeypatch.setattr(
+        sys.modules[__name__], "_resolve_chromium_executable", lambda: None
+    )
+
+    with pytest.raises(pytest.fail.Exception, match="Chromium"):
+        _require_e2e_playwright_prereqs()
+
+
+def test_opted_in_e2e_fails_when_npm_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_RUN_E2E_ENV, "1")
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+
+    with pytest.raises(pytest.fail.Exception, match="npm"):
+        _npm_command()
+
+
+def test_opted_in_e2e_fails_when_playwright_cannot_launch_chromium(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import ModuleType
+
+    class _LaunchError(Exception):
+        pass
+
+    class _Chromium:
+        def launch(self, **_kwargs: object) -> None:
+            raise _LaunchError("launch details must not be logged")
+
+    sync_api = ModuleType("playwright.sync_api")
+    sync_api.Error = _LaunchError  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+    monkeypatch.setenv(_RUN_E2E_ENV, "1")
+
+    with pytest.raises(pytest.fail.Exception, match="launch Chromium"):
+        _launch_chromium(_Chromium(), {"headless": True})
+
+
+def test_opted_in_e2e_fails_when_playwright_package_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_RUN_E2E_ENV, "1")
+
+    def _missing_package(_module_name: str) -> object:
+        raise ModuleNotFoundError("playwright package is missing")
+
+    monkeypatch.setattr(importlib, "import_module", _missing_package)
+
+    with pytest.raises(pytest.fail.Exception, match="Playwright is required"):
+        _require_playwright_package()
+
+
 def _resolve_chromium_executable() -> str | None:
     env_path = str(os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE") or "").strip()
     if env_path:
@@ -72,6 +357,18 @@ def _resolve_chromium_executable() -> str | None:
     for candidate in candidates:
         if Path(candidate).is_file():
             return candidate
+
+    try:
+        from playwright.sync_api import Error, sync_playwright
+
+        with sync_playwright() as playwright:
+            managed_path = str(playwright.chromium.executable_path)
+        if Path(managed_path).is_file():
+            return managed_path
+    except ImportError:
+        return None
+    except (Error, OSError, RuntimeError):
+        pass
     return None
 
 
@@ -79,7 +376,10 @@ def _npm_command() -> list[str]:
     npm_name = "npm.cmd" if os.name == "nt" else "npm"
     npm_path = shutil.which(npm_name)
     if not npm_path:
-        pytest.skip(f"{npm_name} is required for SPA e2e but was not found on PATH.")
+        message = f"{npm_name} is required for SPA e2e but was not found on PATH."
+        if _truthy(os.getenv(_RUN_E2E_ENV)):
+            pytest.fail(message, pytrace=False)
+        pytest.skip(message)
     assert npm_path is not None
     return [npm_path]
 
@@ -87,12 +387,36 @@ def _npm_command() -> list[str]:
 def _require_e2e_playwright_prereqs() -> None:
     chromium_path = _resolve_chromium_executable()
     if not chromium_path:
-        pytest.skip(
+        message = (
             "Playwright SPA e2e requires a Chromium-compatible browser. "
-            "Set PLAYWRIGHT_CHROMIUM_EXECUTABLE to a local Chrome/Edge binary "
-            "(for example, C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe), "
-            "or install one via Playwright browsers command (`playwright install chromium`) "
-            "in the active Node environment."
+            "Set PLAYWRIGHT_CHROMIUM_EXECUTABLE to a local Chrome/Edge binary, "
+            "or install one via `python -m playwright install chromium`."
+        )
+        if _truthy(os.getenv(_RUN_E2E_ENV)):
+            pytest.fail(message, pytrace=False)
+        pytest.skip(message)
+
+
+def _require_playwright_package() -> None:
+    try:
+        importlib.import_module("playwright.sync_api")
+    except ModuleNotFoundError:
+        pytest.fail(
+            "Playwright is required for the opted-in SPA e2e run. "
+            "Install dependencies and run `python -m playwright install chromium`.",
+            pytrace=False,
+        )
+
+
+def _launch_chromium(chromium: Any, launch_kwargs: dict[str, object]) -> Any:
+    from playwright.sync_api import Error
+
+    try:
+        return chromium.launch(**launch_kwargs)
+    except Error:
+        pytest.fail(
+            "Playwright could not launch Chromium for the opted-in E2E run.",
+            pytrace=False,
         )
 
 
@@ -157,33 +481,6 @@ def _terminate_process(process: subprocess.Popen[Any] | None) -> None:
         process.wait(timeout=5)
 
 
-def _terminate_port_listener(port: int) -> None:
-    """Stop a fixture-owned child process left listening on its unique port."""
-    if os.name != "nt":
-        return
-    result = subprocess.run(
-        ["netstat", "-ano", "-p", "tcp"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    for line in result.stdout.splitlines():
-        fields = line.split()
-        if len(fields) < 5 or fields[0].upper() != "TCP":
-            continue
-        local_address, state, raw_pid = fields[1], fields[-2], fields[-1]
-        if not local_address.endswith(f":{port}") or state.upper() != "LISTENING":
-            continue
-        if not raw_pid.isdigit():
-            continue
-        subprocess.run(
-            ["taskkill", "/PID", raw_pid, "/T", "/F"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-
-
 def _read_log_tail(path: Path, *, max_chars: int = 4000) -> str:
     if not path.exists():
         return ""
@@ -193,6 +490,7 @@ def _read_log_tail(path: Path, *, max_chars: int = 4000) -> str:
 
 def _seed_database(repo_root: Path, env: dict[str, str]) -> None:
     script = """
+import os
 from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session
@@ -205,6 +503,7 @@ from src.models import (
     ExperimentDecision,
     Goal,
     KeyResult,
+    LifecycleState,
     Objective,
     Task,
     TaskStatus,
@@ -251,11 +550,21 @@ with Session(engine, expire_on_commit=False) as session:
         must_change_password=False,
         password_changed_at=now,
     )
+    password_change_user = User(
+        username='e2e_password_change',
+        password_hash=crud.hash_password(os.environ['OKR_E2E_PASSWORD_CHANGE_INITIAL_PASSWORD']),
+        display_name='E2E Password Change',
+        role=UserRole.MEMBER,
+        is_active=True,
+        must_change_password=False,
+        password_changed_at=now,
+    )
     session.add(admin_user)
     session.add(manager_user)
     session.flush()
     member_user.manager_id = manager_user.id
     session.add(member_user)
+    session.add(password_change_user)
     session.flush()
 
     e2e_cycle = Cycle(
@@ -323,6 +632,7 @@ with Session(engine, expire_on_commit=False) as session:
         progress=10,
         target_value=100.0,
         current_value=10.0,
+        state=LifecycleState.ACTIVE,
         created_by='e2e_admin',
     )
     manager_kr = KeyResult(
@@ -331,6 +641,7 @@ with Session(engine, expire_on_commit=False) as session:
         progress=14,
         target_value=50.0,
         current_value=10.0,
+        state=LifecycleState.ACTIVE,
         created_by='e2e_manager',
     )
     member_kr = KeyResult(
@@ -339,6 +650,7 @@ with Session(engine, expire_on_commit=False) as session:
         progress=16,
         target_value=20.0,
         current_value=5.0,
+        state=LifecycleState.ACTIVE,
         created_by='e2e_member',
     )
     session.add(admin_kr)
@@ -422,13 +734,7 @@ def e2e_stack(
             f"Playwright SPA e2e is disabled. Set {_RUN_E2E_ENV}=1 to run this test."
         )
 
-    pytest.importorskip(
-        "playwright.sync_api",
-        reason=(
-            "Playwright is not installed in this environment. "
-            "Install dependencies and run `playwright install chromium`."
-        ),
-    )
+    _require_playwright_package()
     _require_e2e_playwright_prereqs()
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -439,6 +745,8 @@ def e2e_stack(
     bff_port = _free_local_port()
     app_port = _free_local_port()
     service_token = "e2e-service-token"
+    signing_secret = "e2e-only-shared-request-signing-secret-2026"
+    signing_key_id = "e2e-fixture-key"
 
     env = os.environ.copy()
     existing_pythonpath = str(env.get("PYTHONPATH", "")).strip()
@@ -458,7 +766,10 @@ def e2e_stack(
             "OKR_BACKEND_PORT": str(backend_port),
             "OKR_BACKEND_SERVICE_TOKEN": service_token,
             "OKR_BACKEND_ENFORCE_TOKEN": "true",
-            "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "false",
+            "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "true",
+            "OKR_BACKEND_SIGNING_SECRET": signing_secret,
+            "OKR_BACKEND_SIGNING_KEY_ID": signing_key_id,
+            "OKR_BACKEND_SECURITY_STATE_BACKEND": "database",
             # This packet exercises role-route behavior, not rate limiting. All
             # simulated users share the fixture's trusted loopback client IP.
             "OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS": "10000",
@@ -468,7 +779,11 @@ def e2e_stack(
         }
     )
 
-    _seed_database(repo_root, env)
+    seed_env = env.copy()
+    seed_env["OKR_E2E_PASSWORD_CHANGE_INITIAL_PASSWORD"] = (
+        _PASSWORD_CHANGE_INITIAL_PASSWORD
+    )
+    _seed_database(repo_root, seed_env)
 
     backend_log_path = tmp_dir / "backend.log"
     bff_log_path = tmp_dir / "bff.log"
@@ -479,6 +794,7 @@ def e2e_stack(
     bff_process: subprocess.Popen[Any] | None = None
     spa_process: subprocess.Popen[Any] | None = None
     worker_process: subprocess.Popen[Any] | None = None
+    spa_typegen_snapshot: dict[str, bytes | None] | None = None
 
     with (
         backend_log_path.open("w", encoding="utf-8") as backend_log,
@@ -553,7 +869,8 @@ def e2e_stack(
                     "BFF_COOKIE_SECURE": "false",
                     "OKR_BACKEND_API_URL": f"http://127.0.0.1:{backend_port}",
                     "OKR_BACKEND_SERVICE_TOKEN": service_token,
-                    "OKR_BACKEND_SIGNING_SECRET": "",
+                    "OKR_BACKEND_SIGNING_SECRET": signing_secret,
+                    "OKR_BACKEND_SIGNING_KEY_ID": signing_key_id,
                     "BFF_REQUEST_TIMEOUT_MS": "20000",
                 }
             )
@@ -579,8 +896,10 @@ def e2e_stack(
             spa_env.update(
                 {
                     "BFF_PUBLIC_ORIGIN": f"http://127.0.0.1:{bff_port}",
+                    "OKR_E2E_NEXT_DIST_DIR": f".next/e2e-{app_port}",
                 }
             )
+            spa_typegen_snapshot = _capture_next_typegen_files(repo_root / "spa-web")
             spa_process = subprocess.Popen(
                 [
                     *_npm_command(),
@@ -617,9 +936,10 @@ def e2e_stack(
             _terminate_process(bff_process)
             _terminate_process(backend_process)
             _terminate_process(worker_process)
-            _terminate_port_listener(app_port)
-            _terminate_port_listener(bff_port)
-            _terminate_port_listener(backend_port)
+            if spa_typegen_snapshot is not None:
+                _restore_next_typegen_files(
+                    repo_root / "spa-web", app_port, spa_typegen_snapshot
+                )
 
 
 def _login(page, username: str, password: str) -> None:
@@ -671,10 +991,7 @@ def _login(page, username: str, password: str) -> None:
         resolved_username = username_input.input_value()
         resolved_password = password_input.input_value()
         if resolved_username != username or resolved_password != password:
-            raise AssertionError(
-                f"Failed to populate login fields. Observed username={resolved_username!r}, "
-                f"password={resolved_password!r}"
-            )
+            raise AssertionError("Failed to populate login fields.")
     for _ in range(5):
         if sign_in_button.is_enabled():
             break
@@ -687,9 +1004,8 @@ def _login(page, username: str, password: str) -> None:
         assert str(request_payload.get("username", "")) == username, (
             f"Sent username mismatch: {request_payload.get('username')!r} != {username!r}"
         )
-        assert str(request_payload.get("password", "")) == password, (
-            f"Sent password mismatch: {request_payload.get('password')!r}"
-        )
+        if str(request_payload.get("password", "")) != password:
+            raise AssertionError("Sent password mismatch.")
     expect(page.get_by_role("button", name="Sign out", exact=True)).to_be_visible(
         timeout=90_000
     )
@@ -840,7 +1156,7 @@ def _run_timer_path(page) -> None:
     expect(timer_dialog).not_to_be_visible(timeout=90_000)
 
 
-def _run_check_in_path(page) -> None:
+def _run_check_in_path(page, expected_kr_title: str) -> None:
     from playwright.sync_api import expect
 
     page.get_by_role("button", name="Check-In").click()
@@ -848,17 +1164,26 @@ def _run_check_in_path(page) -> None:
         timeout=90_000
     )
     page.get_by_role("button", name="2. Check-Ins", exact=True).click()
-    submit_checkins = page.get_by_role("button", name="Submit Check-In")
-    all_clear_message = page.get_by_text("All clear for this cycle.")
-    if submit_checkins.count() > 0:
-        submit_checkins.first.click()
-        metric_inputs = page.locator('input[placeholder^="e.g."]').first
-        if metric_inputs.count() > 0:
-            metric_inputs.fill("10")
-            submit_checkins.first.click()
-        expect(submit_checkins.first).to_have_text("Submit Check-In", timeout=90_000)
-    else:
-        expect(all_clear_message).to_be_visible(timeout=90_000)
+    kr_card = page.locator(".checkin-kr-card").filter(has_text=expected_kr_title)
+    expect(kr_card).to_have_count(1, timeout=90_000)
+    expect(kr_card).to_be_visible(timeout=90_000)
+    metric_input = kr_card.locator('input[placeholder^="e.g."]').first
+    expect(metric_input).to_be_visible(timeout=90_000)
+    metric_input.fill("11")
+    submit_checkin = kr_card.get_by_role("button", name="Submit Check-In", exact=True)
+    with page.expect_response(
+        lambda response: "/api/backend/v1/check-ins" in response.url
+        and response.request.method == "POST"
+    ) as checkin_response:
+        submit_checkin.click()
+    assert checkin_response.value.ok, (
+        "Seeded active key result check-in failed: "
+        f"HTTP {checkin_response.value.status}"
+    )
+    expect(kr_card).to_have_count(0, timeout=90_000)
+    expect(page.get_by_text("All clear for this cycle.", exact=True)).to_be_visible(
+        timeout=90_000
+    )
 
 
 def _run_weekly_job_path(page) -> None:
@@ -947,14 +1272,20 @@ def _assert_mode_content(page, mode: str) -> None:
     from playwright.sync_api import expect
 
     expected = {
+        "atlas": ("text", "Atlas Workspace"),
         "dashboard": ("heading", "Dashboard Workspace"),
+        "check_in": ("button", "1. Review"),
         "daily": ("paragraph", "Daily Report"),
+        "ritual": ("button", "1. Review"),
         "timeline": ("heading", "Recent work logs"),
+        "weekly": ("paragraph", "Weekly Report"),
         "retrobox": ("label", "Retro content"),
     }
     locator_kind, label = expected[mode]
     if locator_kind == "heading":
         locator = page.get_by_role("heading", name=label, exact=True)
+    elif locator_kind == "button":
+        locator = page.get_by_role("button", name=label, exact=True)
     elif locator_kind == "paragraph":
         locator = page.locator("p.kicker").filter(has_text=label).first
     elif locator_kind == "label":
@@ -966,11 +1297,15 @@ def _assert_mode_content(page, mode: str) -> None:
     # Assert each route's own substantive panel too; URL alone is not evidence
     # that the intended route UI mounted.
     detail = {
+        "atlas": page.get_by_text("Focus Map", exact=True),
         "dashboard": page.get_by_text("Execution Completion", exact=True),
+        "check_in": page.get_by_role("button", name="2. Check-Ins", exact=True),
         "daily": page.get_by_role("heading", name="Time Distribution", exact=True),
+        "ritual": page.get_by_role("button", name="2. Check-Ins", exact=True),
         "timeline": page.get_by_placeholder(
             "Filter timeline by task, owner, objective, goal, or status"
         ),
+        "weekly": page.get_by_role("button", name="Export Weekly PDF", exact=True),
         "retrobox": page.get_by_role("button", name="Add retrospective", exact=True),
     }[mode]
     expect(detail).to_be_visible(timeout=90_000)
@@ -1013,26 +1348,132 @@ def _exercise_route_surfaces(page, app_url: str) -> None:
     expect(page.get_by_role("button", name="Restore Backup", exact=True)).to_be_visible(
         timeout=90_000
     )
+    with page.expect_download() as backup_download:
+        page.get_by_role("button", name="Download Backup JSON", exact=True).click()
+    download = backup_download.value
+    assert download.suggested_filename.startswith("okr_backup_")
+    backup_path = download.path()
+    assert backup_path is not None
+    backup = json.loads(Path(backup_path).read_text(encoding="utf-8"))
+    assert backup["format"] == "okr-db-backup/v1"
+    assert "e2e_admin" in {user["username"] for user in backup["tables"]["user"]}
+    assert all(user["password_hash"] == "REDACTED" for user in backup["tables"]["user"])
 
     page.get_by_role("button", name="Audit", exact=True).click()
     expect(page.get_by_text("Audit summary", exact=True)).to_be_visible(timeout=90_000)
-    expect(
-        page.get_by_role("button", name="Refresh Summary", exact=True)
-    ).to_be_visible(timeout=90_000)
+    refresh_summary = page.get_by_role("button", name="Refresh Summary", exact=True)
+    expect(refresh_summary).to_be_visible(timeout=90_000)
+    with page.expect_response(
+        lambda response: "/api/backend/v1/read/query" in response.url
+        and "audit.summary" in (response.request.post_data or "")
+    ) as audit_response:
+        refresh_summary.click()
+    assert audit_response.value.ok, (
+        f"Audit summary refresh failed: HTTP {audit_response.value.status}"
+    )
+    audit_summary = audit_response.value.json()
+    assert isinstance(audit_summary.get("total_events"), int)
+    assert audit_summary["total_events"] > 0
+    recent_events = audit_summary.get("recent_events")
+    assert isinstance(recent_events, list) and recent_events
+    audit_event_count = (
+        page.locator(".report-card").filter(has_text="Events").locator("strong")
+    )
+    expect(audit_event_count).to_have_text(
+        str(audit_summary["total_events"]), timeout=90_000
+    )
+    latest_event = recent_events[0]
+    event_label = f"{latest_event['action']} / {latest_event['entity']}"
+    recent_events_panel = page.get_by_text("Recent events", exact=True).locator("..")
+    latest_event_label = recent_events_panel.locator(".report-list-row").first.locator(
+        "strong"
+    )
+    expect(latest_event_label).to_have_text(event_label, timeout=90_000)
+
+
+def test_signed_in_password_change_preserves_session(e2e_stack: E2EStack) -> None:
+    """A wrong current password fails; the real browser path changes it in place."""
+    from playwright.sync_api import expect, sync_playwright
+
+    chromium_path = _resolve_chromium_executable()
+    launch_kwargs: dict[str, object] = {"headless": True}
+    if chromium_path:
+        launch_kwargs["executable_path"] = chromium_path
+    new_password = f"Aa1!{credential_password('e2e_password_change')}"
+    wrong_password = f"Aa1!{credential_password('e2e_wrong_current_password')}"
+    operation_path = "/api/backend/v1/auth/change-password"
+
+    with sync_playwright() as playwright:
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
+        try:
+            context = browser.new_context(viewport={"width": 1600, "height": 1000})
+            page = context.new_page()
+            page.goto(
+                f"{e2e_stack.app_url}/login",
+                wait_until="domcontentloaded",
+                timeout=90_000,
+            )
+            _login(page, _PASSWORD_CHANGE_USERNAME, _PASSWORD_CHANGE_INITIAL_PASSWORD)
+
+            page.get_by_role("button", name="Change password", exact=True).click()
+            current_field = page.get_by_label("Current password", exact=True)
+            new_field = page.get_by_label("New password", exact=True)
+            confirm_field = page.get_by_label("Confirm new password", exact=True)
+            submit = page.get_by_role("button", name="Change password", exact=True)
+            expect(submit).to_be_disabled()
+            current_field.fill(wrong_password)
+            new_field.fill(new_password)
+            confirm_field.fill(new_password)
+            with page.expect_response(
+                lambda response: response.url == f"{e2e_stack.app_url}{operation_path}"
+                and response.request.method == "POST"
+            ) as denied_response:
+                submit.click()
+            assert denied_response.value.status == 401
+            expect(
+                page.get_by_text("Password change failed:", exact=False)
+            ).to_be_visible()
+
+            current_field.fill(_PASSWORD_CHANGE_INITIAL_PASSWORD)
+            with page.expect_response(
+                lambda response: response.url == f"{e2e_stack.app_url}{operation_path}"
+                and response.request.method == "POST"
+            ) as changed_response:
+                submit.click()
+            assert changed_response.value.status == 200
+            assert changed_response.value.json() == {"updated": True}
+            expect(page.get_by_role("status")).to_have_text(
+                "Password updated successfully."
+            )
+
+            # Reload sends the original browser's cookie through SPA -> BFF again.
+            with page.expect_response(
+                lambda response: response.url == f"{e2e_stack.app_url}/api/session/me"
+                and response.request.method == "GET"
+            ) as session_response:
+                page.reload(wait_until="domcontentloaded", timeout=90_000)
+            assert session_response.value.status == 200
+            assert (
+                session_response.value.json()["user"]["username"]
+                == _PASSWORD_CHANGE_USERNAME
+            )
+            expect(
+                page.get_by_role("button", name="Sign out", exact=True)
+            ).to_be_visible(timeout=90_000)
+            context.close()
+        finally:
+            browser.close()
 
 
 def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
-    from playwright.sync_api import Error, expect, sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     chromium_path = _resolve_chromium_executable()
     launch_kwargs: dict[str, object] = {"headless": True}
     if chromium_path:
         launch_kwargs["executable_path"] = chromium_path
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(**launch_kwargs)
-        except Error as exc:
-            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
 
         try:
             for role in ("admin", "manager", "member"):
@@ -1047,9 +1488,13 @@ def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
                 _login(page, username=username, password=password)
 
                 for mode, route_path in {
+                    "atlas": "/",
                     "dashboard": "/dashboard",
+                    "check_in": "/check-in",
                     "daily": "/daily",
+                    "ritual": "/ritual",
                     "timeline": "/timeline",
+                    "weekly": "/weekly",
                     "retrobox": "/retrobox",
                 }.items():
                     page.goto(
@@ -1093,6 +1538,16 @@ def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
                     expect(
                         page.get_by_role("heading", name="Cycles", exact=True)
                     ).to_have_count(0, timeout=15_000)
+                    expect(page).to_have_url(
+                        re.compile(rf"^{re.escape(e2e_stack.app_url)}/(?:\?.*)?$"),
+                        timeout=90_000,
+                    )
+                    _assert_mode_content(page, "atlas")
+                    expect(
+                        page.get_by_role(
+                            "heading", name="Platform Controls", exact=True
+                        )
+                    ).to_have_count(0, timeout=15_000)
                     expect(
                         page.get_by_role("button", name="Sign out", exact=True)
                     ).to_be_visible(timeout=90_000)
@@ -1102,17 +1557,14 @@ def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
 
 
 def test_atlas_deep_link_and_rendered_alignment(e2e_stack: E2EStack) -> None:
-    from playwright.sync_api import Error, expect, sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     chromium_path = _resolve_chromium_executable()
     launch_kwargs: dict[str, object] = {"headless": True}
     if chromium_path:
         launch_kwargs["executable_path"] = chromium_path
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(**launch_kwargs)
-        except Error as exc:
-            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
 
         try:
             page = browser.new_page(viewport={"width": 1600, "height": 1000})
@@ -1181,17 +1633,14 @@ def test_atlas_deep_link_and_rendered_alignment(e2e_stack: E2EStack) -> None:
 
 
 def test_inspector_work_history_rtl(e2e_stack: E2EStack) -> None:
-    from playwright.sync_api import Error, expect, sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     chromium_path = _resolve_chromium_executable()
     launch_kwargs: dict[str, object] = {"headless": True}
     if chromium_path:
         launch_kwargs["executable_path"] = chromium_path
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(**launch_kwargs)
-        except Error as exc:
-            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
 
         try:
             page = browser.new_page(viewport={"width": 1600, "height": 1000})
@@ -1236,27 +1685,14 @@ def test_inspector_work_history_rtl(e2e_stack: E2EStack) -> None:
     ids=["admin", "manager", "member"],
 )
 def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
-    from playwright.sync_api import Error, expect, sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     chromium_path = _resolve_chromium_executable()
     launch_kwargs: dict[str, object] = {"headless": True}
     if chromium_path:
         launch_kwargs["executable_path"] = chromium_path
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(**launch_kwargs)
-        except Error as exc:
-            if chromium_path:
-                pytest.skip(
-                    "Playwright could not launch Chromium using local executable. "
-                    f"Details: {exc}. Path: {chromium_path}"
-                )
-            pytest.skip(
-                "Chromium runtime is unavailable for Playwright. "
-                "Install browsers via `playwright install chromium` or set "
-                "PLAYWRIGHT_CHROMIUM_EXECUTABLE to a local Chrome path. "
-                f"Details: {exc}"
-            )
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
 
         context = browser.new_context(viewport={"width": 1600, "height": 1000})
         page = context.new_page()
@@ -1267,7 +1703,7 @@ def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
 
         _login(page, username=username, password=password)
         _run_timer_path(page)
-        _run_check_in_path(page)
+        _run_check_in_path(page, expected_kr_title=f"E2E {role.title()} Key Result")
         _run_weekly_job_path(page)
 
         if role == "admin":
@@ -1281,12 +1717,102 @@ def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
             )
 
         page.get_by_role("button", name="Sign out", exact=True).click()
+        expect(page).to_have_url(
+            re.compile(rf"^{re.escape(e2e_stack.app_url)}/login(?:\?.*)?$"),
+            timeout=30_000,
+        )
         expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible(
             timeout=90_000
         )
 
         context.close()
         browser.close()
+
+
+def test_authenticated_shell_navigation_is_usable_while_atlas_snapshot_is_pending(
+    e2e_stack: E2EStack,
+) -> None:
+    from playwright.sync_api import Error, expect, sync_playwright
+
+    chromium_path = _resolve_chromium_executable()
+    launch_kwargs: dict[str, object] = {"headless": True}
+    if chromium_path:
+        launch_kwargs["executable_path"] = chromium_path
+
+    with sync_playwright() as playwright:
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
+
+        context = browser.new_context(viewport={"width": 1600, "height": 1000})
+        page = context.new_page()
+        page.add_init_script(
+            """
+            (() => {
+              const nativeFetch = window.fetch.bind(window);
+              const gate = { pending: false, release: null, intercepted: 0 };
+              window.__atlasSnapshotFetchGate = gate;
+              window.fetch = (input, init) => {
+                const requestUrl = typeof input === "string" ? input : input.url;
+                const url = new URL(requestUrl, window.location.href);
+                if (
+                  url.pathname === "/api/backend/v1/read/atlas/snapshot" &&
+                  gate.intercepted === 0
+                ) {
+                  gate.intercepted += 1;
+                  gate.pending = true;
+                  return new Promise((resolve, reject) => {
+                    gate.release = () => {
+                      gate.pending = false;
+                      gate.release = null;
+                      nativeFetch(input, init).then(resolve, reject);
+                    };
+                  });
+                }
+                return nativeFetch(input, init);
+              };
+            })();
+            """
+        )
+        try:
+            page.goto(
+                f"{e2e_stack.app_url}/login",
+                wait_until="domcontentloaded",
+                timeout=90_000,
+            )
+            _login(page, *_E2E_ROLES["admin"])
+
+            page.wait_for_function(
+                """() => {
+                  const gate = window.__atlasSnapshotFetchGate;
+                  return gate && gate.pending === true && gate.intercepted === 1;
+                }""",
+                timeout=90_000,
+            )
+            expect(
+                page.get_by_role("button", name="Sign out", exact=True)
+            ).to_be_visible(timeout=90_000)
+            dashboard_button = page.get_by_role("button", name="Dashboard", exact=True)
+            expect(dashboard_button).to_be_visible(timeout=90_000)
+
+            dashboard_button.click()
+            expect(
+                page.get_by_role("heading", name="Dashboard Workspace", exact=True)
+            ).to_be_visible(timeout=90_000)
+            assert page.evaluate("window.__atlasSnapshotFetchGate.pending"), (
+                "the initial Atlas snapshot read should remain pending during navigation"
+            )
+        finally:
+            # Ensure a failed assertion cannot leave the page waiting on the gated fetch.
+            try:
+                page.evaluate(
+                    """() => {
+                      const gate = window.__atlasSnapshotFetchGate;
+                      if (gate && typeof gate.release === "function") gate.release();
+                    }"""
+                )
+            except Error:
+                pass
+            context.close()
+            browser.close()
 
 
 def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
@@ -1303,17 +1829,41 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
     safe_read_kinds = {"cycles.all", "cycles.active", "users.all", "teams.all"}
     event_rows: list[tuple[int, str, str]] = []
     request_identities: dict[int, str] = {}
+    session_start_rows: dict[int, int] = {}
+    session_source_routes: dict[int, str | None] = {}
+    session_response_identities: dict[int, str] = {}
 
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(**launch_kwargs)
-        except Error as exc:
-            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
 
         try:
             context = browser.new_context(viewport={"width": 1600, "height": 1000})
             page = context.new_page()
             sequence = 0
+
+            page.add_init_script(
+                """
+                (() => {
+                  const nativeSetInterval = window.setInterval;
+                  const nativeClearInterval = window.clearInterval;
+                  const snapshotPollIntervals = [];
+                  window.__snapshotPollIntervals = snapshotPollIntervals;
+                  window.setInterval = function (callback, delay, ...args) {
+                    const handle = nativeSetInterval.call(this, callback, delay, ...args);
+                    if (delay === 45_000 || delay === 600_000) {
+                      snapshotPollIntervals.push({ handle, delay, cleared: false });
+                    }
+                    return handle;
+                  };
+                  window.clearInterval = function (handle) {
+                    for (const interval of snapshotPollIntervals) {
+                      if (interval.handle === handle) interval.cleared = true;
+                    }
+                    return nativeClearInterval.call(this, handle);
+                  };
+                })();
+                """
+            )
 
             def _safe_identity(request) -> str | None:
                 parsed_url = urlsplit(request.url)
@@ -1336,41 +1886,11 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                         return str(payload["kind"])
                 return None
 
-            def _record(phase: str, identity: str) -> None:
+            def _record(phase: str, identity: str) -> int:
                 nonlocal sequence
                 sequence += 1
                 event_rows.append((sequence, phase, identity))
-
-            def _request_started(request) -> None:
-                identity = _safe_identity(request)
-                if identity is None:
-                    return
-                request_identities[id(request)] = identity
-                _record("start", identity)
-
-            def _request_finished(request) -> None:
-                identity = request_identities.get(id(request))
-                if identity is not None:
-                    _record("finish", identity)
-
-            def _request_failed(request) -> None:
-                identity = request_identities.get(id(request))
-                if identity is not None:
-                    _record("failed", identity)
-
-            page.on("request", _request_started)
-            page.on("requestfinished", _request_finished)
-            page.on("requestfailed", _request_failed)
-
-            page.goto(
-                f"{e2e_stack.app_url}/login",
-                wait_until="domcontentloaded",
-                timeout=90_000,
-            )
-            _login(page, *_E2E_ROLES["admin"])
-            expect(
-                page.get_by_role("button", name="Sign out", exact=True)
-            ).to_be_visible(timeout=90_000)
+                return len(event_rows) - 1
 
             def _count(phase: str, identity: str) -> int:
                 return sum(
@@ -1390,6 +1910,123 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                     "Expected browser requests did not finish: "
                     f"{identities!r}; observed safe events={event_rows!r}"
                 )
+
+            def _request_started(request) -> None:
+                identity = _safe_identity(request)
+                if identity is None:
+                    return
+                request_key = id(request)
+                request_identities[request_key] = identity
+                if identity == "session.me":
+                    try:
+                        source_path = urlsplit(request.frame.url).path
+                    except (Error, AttributeError):
+                        source_path = None
+                    session_source_routes[request_key] = source_path
+                    session_start_rows[request_key] = _record(
+                        "start", "session.me.pending"
+                    )
+                    return
+                _record("start", identity)
+
+            def _response_received(response) -> None:
+                request_key = id(response.request)
+                if request_identities.get(request_key) != "session.me":
+                    return
+                status = int(response.status)
+                identity = _session_read_identity(
+                    session_source_routes.get(request_key), status
+                )
+                session_response_identities[request_key] = identity
+                row_index = session_start_rows.get(request_key)
+                if row_index is not None:
+                    sequence_number, phase, _ = event_rows[row_index]
+                    event_rows[row_index] = (sequence_number, phase, identity)
+
+            def _request_finished(request) -> None:
+                request_key = id(request)
+                identity = request_identities.get(request_key)
+                if identity is not None:
+                    if identity == "session.me":
+                        identity = session_response_identities.get(
+                            request_key, "session.me.unexpected"
+                        )
+                    _record("finish", identity)
+
+            def _request_failed(request) -> None:
+                identity = request_identities.get(id(request))
+                if identity is not None:
+                    if identity == "session.me":
+                        identity = "session.me.unexpected"
+                        row_index = session_start_rows.get(id(request))
+                        if row_index is not None:
+                            sequence_number, phase, _ = event_rows[row_index]
+                            event_rows[row_index] = (
+                                sequence_number,
+                                phase,
+                                identity,
+                            )
+                    _record("failed", identity)
+
+            page.on("request", _request_started)
+            page.on("response", _response_received)
+            page.on("requestfinished", _request_finished)
+            page.on("requestfailed", _request_failed)
+
+            with page.expect_response(
+                lambda response: (
+                    urlsplit(response.url).path == "/api/session/me"
+                    and response.status == 401
+                ),
+                timeout=90_000,
+            ):
+                page.goto(
+                    f"{e2e_stack.app_url}/login",
+                    wait_until="domcontentloaded",
+                    timeout=90_000,
+                )
+            _wait_for_finishes(("session.me.login_probe",))
+            _login(page, *_E2E_ROLES["admin"])
+            expect(
+                page.get_by_role("button", name="Sign out", exact=True)
+            ).to_be_visible(timeout=90_000)
+
+            def _wait_for_shell_render() -> None:
+                # The visible heading above proves route content committed; two
+                # animation frames then let post-commit effects run before the
+                # request ledger is inspected, without a wall-clock quiet period.
+                page.evaluate(
+                    """() => new Promise(resolve => {
+                        requestAnimationFrame(() => requestAnimationFrame(resolve));
+                    })"""
+                )
+
+            def _snapshot_poll_state() -> list[dict[str, object]]:
+                return page.evaluate(
+                    """() => window.__snapshotPollIntervals.map(({handle, delay, cleared}) => ({
+                      handle,
+                      delay,
+                      cleared,
+                    }))"""
+                )
+
+            def _wait_for_snapshot_poll() -> list[dict[str, object]]:
+                page.wait_for_function(
+                    """() => window.__snapshotPollIntervals.filter(
+                      ({cleared}) => !cleared
+                    ).length === 1""",
+                    timeout=90_000,
+                )
+                intervals = _snapshot_poll_state()
+                active_intervals = [
+                    interval for interval in intervals if not interval["cleared"]
+                ]
+                assert len(active_intervals) == 1, (
+                    "expected one active snapshot poll interval before warm "
+                    f"navigation; observed={intervals!r}"
+                )
+                assert active_intervals[0]["delay"] in (45_000, 600_000), intervals
+                return intervals
 
             def _assert_parallel_pair(first: str, second: str) -> None:
                 first_start = [
@@ -1420,14 +2057,28 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                     f"{first} and {second} should both start before either finishes: {event_rows!r}"
                 )
 
-            _wait_for_finishes(("cycles.all", "cycles.active"))
+            _wait_for_finishes(
+                (
+                    "session.me.login_probe",
+                    "session.me",
+                    "cycles.all",
+                    "cycles.active",
+                )
+            )
+            assert _count("start", "session.me.login_probe") == 1, event_rows
+            assert _count("finish", "session.me.login_probe") == 1, event_rows
+            assert _count("start", "session.me") == 1, event_rows
+            assert _count("finish", "session.me") == 1, event_rows
+            assert _count("start", "session.me.unexpected") == 0, event_rows
+            assert _count("finish", "session.me.unexpected") == 0, event_rows
+            assert _count("failed", "session.me.unexpected") == 0, event_rows
             assert _count("start", "cycles.all") == 1, event_rows
             assert _count("finish", "cycles.all") == 1, event_rows
             assert _count("start", "cycles.active") == 1, event_rows
             assert _count("finish", "cycles.active") == 1, event_rows
             _assert_parallel_pair("cycles.all", "cycles.active")
             initial_session_reads = _count("finish", "session.me")
-            assert initial_session_reads >= 1, event_rows
+            assert initial_session_reads == 1, event_rows
 
             # Entering admin asks for the same cycle pair plus users/teams.
             # The cycle pair is already warm and shared with shell bootstrap;
@@ -1436,7 +2087,15 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
             expect(
                 page.get_by_role("heading", name="Platform Controls", exact=True)
             ).to_be_visible(timeout=90_000)
+            _wait_for_shell_render()
             _wait_for_finishes(("users.all", "teams.all"))
+            assert _count("start", "session.me.login_probe") == 1, event_rows
+            assert _count("finish", "session.me.login_probe") == 1, event_rows
+            assert _count("start", "session.me") == 1, event_rows
+            assert _count("finish", "session.me") == 1, event_rows
+            assert _count("start", "session.me.unexpected") == 0, event_rows
+            assert _count("finish", "session.me.unexpected") == 0, event_rows
+            assert _count("failed", "session.me.unexpected") == 0, event_rows
             assert _count("start", "cycles.all") == 1, event_rows
             assert _count("finish", "cycles.all") == 1, event_rows
             assert _count("start", "cycles.active") == 1, event_rows
@@ -1450,6 +2109,7 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
             warm_counts = {
                 identity: _count("start", identity)
                 for identity in (
+                    "session.me.login_probe",
                     "session.me",
                     "cycles.all",
                     "cycles.active",
@@ -1458,6 +2118,7 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                 )
             }
             assert warm_counts["session.me"] == initial_session_reads, event_rows
+            initial_snapshot_poll = _wait_for_snapshot_poll()
 
             # Use the in-shell buttons, not document reloads, to prove that warm
             # navigation does not refetch session or cached shell resources.
@@ -1465,15 +2126,24 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
             expect(
                 page.get_by_role("heading", name="Dashboard Workspace", exact=True)
             ).to_be_visible(timeout=90_000)
+            _wait_for_shell_render()
             page.get_by_role("button", name="Admin", exact=True).click()
             expect(
                 page.get_by_role("heading", name="Platform Controls", exact=True)
             ).to_be_visible(timeout=90_000)
+            _wait_for_shell_render()
             page.get_by_role("button", name="Dashboard", exact=True).click()
             expect(
                 page.get_by_role("heading", name="Dashboard Workspace", exact=True)
             ).to_be_visible(timeout=90_000)
-            page.wait_for_timeout(250)
+            _wait_for_shell_render()
+
+            final_snapshot_poll = _snapshot_poll_state()
+            assert final_snapshot_poll == initial_snapshot_poll, (
+                "warm client-side navigation cleared or replaced the snapshot poll "
+                f"interval: before={initial_snapshot_poll!r}, "
+                f"after={final_snapshot_poll!r}"
+            )
 
             final_counts = {
                 identity: _count("start", identity) for identity in warm_counts
@@ -1482,6 +2152,9 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                 "warm client-side navigation refetched shared shell resources: "
                 f"before={warm_counts!r}, after={final_counts!r}, events={event_rows!r}"
             )
+            assert _count("start", "session.me.unexpected") == 0, event_rows
+            assert _count("finish", "session.me.unexpected") == 0, event_rows
+            assert _count("failed", "session.me.unexpected") == 0, event_rows
             assert all(_count("failed", identity) == 0 for identity in final_counts), (
                 event_rows
             )

@@ -33,9 +33,9 @@ def get_node_from_crud(
                 crud_module.select(crud_module.Goal)
                 .where(crud_module.Goal.id == node_id)
                 .options(
-                    crud_module.selectinload(crud_module.Goal.objectives).selectinload(
-                        crud_module.Objective.key_results
-                    ),
+                    crud_module.selectinload(crud_module.Goal.objectives)
+                    .selectinload(crud_module.Objective.key_results)
+                    .selectinload(crud_module.KeyResult.tasks),
                     # Eager-load parent cycle for detached access after close.
                     crud_module.selectinload(crud_module.Goal.cycle),
                 )
@@ -76,7 +76,12 @@ def get_node_from_crud(
             statement = (
                 crud_module.select(crud_module.Task)
                 .where(crud_module.Task.id == node_id)
-                .options(crud_module.selectinload(crud_module.Task.work_logs))
+                .options(
+                    crud_module.selectinload(crud_module.Task.work_logs),
+                    crud_module.selectinload(crud_module.Task.key_result)
+                    .selectinload(crud_module.KeyResult.objective)
+                    .selectinload(crud_module.Objective.goal),
+                )
             )
             node = session.exec(statement).first()
 

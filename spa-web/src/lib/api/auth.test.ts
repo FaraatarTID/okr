@@ -1,11 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   FORCED_PASSWORD_CHANGE_PARAM,
   FORCED_PASSWORD_CHANGE_PATH,
   forcedPasswordChangeLocation,
+  readSessionUser,
+  SessionAuthError,
   type AuthUser,
 } from "@/lib/api/auth";
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("readSessionUser", () => {
+  it.each([401, 403] as const)("identifies explicit %i session rejection", async (status) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Rejected", { status })));
+    await expect(readSessionUser()).rejects.toMatchObject({
+      status,
+      name: "SessionAuthError",
+    } satisfies Partial<SessionAuthError>);
+  });
+
+  it("keeps a server failure distinct from explicit session rejection", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Unavailable", { status: 503 })));
+    await expect(readSessionUser()).rejects.not.toBeInstanceOf(SessionAuthError);
+  });
+});
 
 const USER: AuthUser = {
   id: 7,

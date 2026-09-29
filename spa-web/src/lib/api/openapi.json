@@ -1228,6 +1228,41 @@
         "title": "AuthLoginResponse",
         "type": "object"
       },
+      "AuthPasswordChangeRequest": {
+        "properties": {
+          "current_password": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 512,
+            "minLength": 8,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "AuthPasswordChangeRequest",
+        "type": "object"
+      },
+      "AuthPasswordChangeResponse": {
+        "properties": {
+          "updated": {
+            "title": "Updated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "updated"
+        ],
+        "title": "AuthPasswordChangeResponse",
+        "type": "object"
+      },
       "AuthSessionResponse": {
         "properties": {
           "display_name": {
@@ -1368,6 +1403,19 @@
           "must_change_password"
         ],
         "title": "AuthUserView",
+        "type": "object"
+      },
+      "CacheInvalidationRequest": {
+        "properties": {
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timestamp"
+        ],
+        "title": "CacheInvalidationRequest",
         "type": "object"
       },
       "CheckInCreateRequest": {
@@ -2068,6 +2116,65 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InternalSessionRegisterRequest": {
+        "properties": {
+          "actor_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Actor Id",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 512,
+            "minLength": 16,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "actor_id",
+          "expires_at"
+        ],
+        "title": "InternalSessionRegisterRequest",
+        "type": "object"
+      },
+      "InternalSessionRegistryResponse": {
+        "properties": {
+          "status": {
+            "enum": [
+              "registered",
+              "revoked"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "InternalSessionRegistryResponse",
+        "type": "object"
+      },
+      "InternalSessionRevokeRequest": {
+        "properties": {
+          "session_id": {
+            "maxLength": 512,
+            "minLength": 16,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "InternalSessionRevokeRequest",
         "type": "object"
       },
       "JobCancelResponse": {
@@ -4676,6 +4783,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -7086,6 +7200,190 @@
         "summary": "Api Delete Alignment"
       }
     },
+    "/v1/auth/change-password": {
+      "post": {
+        "operationId": "api_change_own_password_v1_auth_change_password_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-okr-actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Actor"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-token-version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Token-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-roles",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Roles"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-service-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Service-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-nonce",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Nonce"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-key-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Key-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthPasswordChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthPasswordChangeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Api Change Own Password"
+      }
+    },
     "/v1/auth/login": {
       "post": {
         "operationId": "api_auth_login_v1_auth_login_post",
@@ -8674,6 +8972,492 @@
           }
         },
         "summary": "Api Close Experiment"
+      }
+    },
+    "/v1/internal/cache-invalidation": {
+      "get": {
+        "operationId": "get_cache_invalidation_timestamp_v1_internal_cache_invalidation_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-okr-service-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Service-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-nonce",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Nonce"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-key-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Key-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Cache Invalidation Timestamp V1 Internal Cache Invalidation Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Cache Invalidation Timestamp",
+        "tags": [
+          "internal"
+        ]
+      },
+      "post": {
+        "operationId": "set_cache_invalidation_timestamp_v1_internal_cache_invalidation_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-okr-service-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Service-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-nonce",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Nonce"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-key-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Key-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CacheInvalidationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Set Cache Invalidation Timestamp V1 Internal Cache Invalidation Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Cache Invalidation Timestamp",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/v1/internal/session-registry/register": {
+      "post": {
+        "description": "Private service operation; requires service-token and request-signature headers.",
+        "operationId": "register_internal_session_v1_internal_session_registry_register_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-okr-service-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Service-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-nonce",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Nonce"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-key-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Key-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalSessionRegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalSessionRegistryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Internal Session",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/v1/internal/session-registry/revoke": {
+      "post": {
+        "description": "Private service operation; requires service-token and request-signature headers.",
+        "operationId": "revoke_internal_session_v1_internal_session_registry_revoke_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-okr-service-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Service-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-nonce",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Nonce"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-key-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Key-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalSessionRevokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalSessionRegistryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Internal Session",
+        "tags": [
+          "internal"
+        ]
       }
     },
     "/v1/jobs": {

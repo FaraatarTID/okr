@@ -37,6 +37,7 @@ function sessionCookie(): string {
       team_id: null,
       manager_id: null,
       must_change_password: false,
+      token_version: 1,
     },
     secret: config.sessionSecret,
     ttlSeconds: config.sessionTtlSeconds,

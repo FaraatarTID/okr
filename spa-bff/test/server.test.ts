@@ -18,6 +18,7 @@ const baseConfig: BffConfig = {
 };
 
 const DEFAULT_USER: SessionUser = {
+  token_version: 1,
   id: 1,
   username: "member-1",
   display_name: "Member One",
@@ -194,8 +195,7 @@ describe("spa-bff server", () => {
   });
 
   it("creates session cookie via /session/login", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(
-      new Response(
+    const loginResponse = new Response(
         JSON.stringify({
           success: true,
           user: {
@@ -212,8 +212,16 @@ describe("spa-bff server", () => {
           status: 200,
           headers: { "content-type": "application/json" },
         },
-      ),
-    );
+      );
+    const fetchFn = vi.fn().mockImplementation(async (url: string) => {
+      if (new URL(url).pathname.endsWith("/session-registry/register")) {
+        return new Response(JSON.stringify({ status: "registered" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return loginResponse.clone();
+    });
     const app = createServer(baseConfig, { fetchFn });
     const response = await app.inject({
       method: "POST",
@@ -383,26 +391,40 @@ describe("spa-bff server", () => {
   });
 
   it("revokes the session on logout so the old cookie is rejected afterward", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          success: true,
-          user: {
-            id: 2,
-            username: "admin",
-            display_name: "Admin",
-            role: "admin",
-            team_id: 9,
-            manager_id: null,
-            must_change_password: false,
-          },
-        }),
-        {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        },
-      ),
-    );
+    const revoked = new Set<string>();
+    const events: string[] = [];
+    const loginUser = {
+      id: 2,
+      username: "admin",
+      display_name: "Admin",
+      role: "admin",
+      team_id: 9,
+      manager_id: null,
+      must_change_password: false,
+      token_version: 1,
+    };
+    const fetchFn = vi.fn().mockImplementation(async (url: string, options: RequestInit) => {
+      const path = new URL(url).pathname;
+      events.push(path);
+      if (path === "/v1/auth/login") {
+        return new Response(JSON.stringify({ success: true, user: loginUser }), { status: 200 });
+      }
+      if (path.endsWith("/session-registry/register")) {
+        return new Response(JSON.stringify({ status: "registered" }), { status: 200 });
+      }
+      if (path.endsWith("/session-registry/revoke")) {
+        const body = JSON.parse(String(options.body)) as { session_id: string };
+        revoked.add(body.session_id);
+        return new Response(JSON.stringify({ status: "revoked" }), { status: 200 });
+      }
+      if (path === "/v1/auth/me") {
+        const sessionId = (options.headers as Record<string, string>)["x-okr-session-id"];
+        return revoked.has(sessionId)
+          ? new Response(JSON.stringify({ detail: "Session revoked." }), { status: 401 })
+          : new Response(JSON.stringify({ ...loginUser, success: true, user: loginUser }), { status: 200 });
+      }
+      throw new Error(`unexpected backend path ${path}`);
+    });
     const app = createServer(baseConfig, { fetchFn });
 
     const loginResponse = await app.inject({
@@ -426,6 +448,7 @@ describe("spa-bff server", () => {
       headers: { cookie: cookieHeader },
     });
     expect(logoutResponse.statusCode).toBe(200);
+    expect(events.indexOf("/v1/internal/session-registry/revoke")).toBeLessThan(events.length);
 
     const meResponse = await app.inject({
       method: "GET",
@@ -435,7 +458,7 @@ describe("spa-bff server", () => {
     await app.close();
 
     expect(meResponse.statusCode).toBe(401);
-    expect(meResponse.json().code).toBe("MISSING_SESSION");
+    expect(meResponse.json().code).toBe("SESSION_REVOKED");
   });
 
   it("rejects non-allowlisted routes", async () => {

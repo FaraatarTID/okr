@@ -42,6 +42,63 @@ def test_authentication_normalizes_uppercase_supabase_role(monkeypatch):
     assert result["user"].role == "admin"
 
 
+def test_authentication_returns_supabase_token_version(monkeypatch):
+    import src.services.supabase_api_mode_nodes as nodes
+
+    password = credential_password("supabase_api_mode_token_version")
+    password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    captured = {}
+
+    def select(path, *, query=None):
+        captured.update(query or {})
+        return 200, [
+            {
+                "id": 7,
+                "username": "member",
+                "password_hash": password_hash,
+                "role": "member",
+                "is_active": True,
+                "token_version": 9,
+            }
+        ]
+
+    monkeypatch.setattr(nodes, "_request_json", select)
+
+    result = nodes.authenticate_user_detailed_via_supabase_api(
+        username="member", password=password
+    )
+
+    assert "token_version" in captured["select"]
+    assert result["user"].token_version == 9
+
+
+def test_supabase_password_reset_updates_password_change_timestamp(monkeypatch):
+    import src.services.supabase_api_mode_operations as operations
+
+    captured = {}
+
+    def update(_table, *, match_query, payload):
+        captured["match_query"] = match_query
+        captured["payload"] = payload
+        return 200, [{"id": 7}]
+
+    monkeypatch.setattr(operations, "_rest_update", update)
+
+    assert (
+        operations.reset_user_password_via_supabase_api(
+            user_id=7,
+            new_password=credential_password("supabase_password_reset"),
+            require_change=False,
+            actor_username="member",
+        )
+        is True
+    )
+
+    assert captured["match_query"] == {"id": "eq.7"}
+    assert captured["payload"]["must_change_password"] is False
+    assert captured["payload"]["password_changed_at"] is not None
+
+
 def test_user_orm_role_mapping_preserves_database_enum_labels():
     role_type = User.__table__.c.role.type
     processor = role_type.result_processor(None, None)

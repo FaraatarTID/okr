@@ -36,6 +36,57 @@ credentials, actor names, and identifiers are not logged or emitted.
 This makes a browser waterfall distinguish backend/data time from total BFF
 request time without changing the SLO probe or asserting a performance target.
 
+### Authenticated SPA navigation evidence (T13)
+
+`scripts.probe_frontend_budget` is the protected-release browser probe for the
+authenticated `/dashboard` and `/daily` shell. It first checks the web login
+page and the BFF health proxy, signs in with credentials read from named
+environment variables, visits and renders both `/dashboard` and `/daily` in
+the same authenticated browser document, then records five alternating
+client-side navigations. These two route warmups populate the browser asset
+cache and application resource cache before samples begin. Chromium uses a fixed
+1600 by 1000 viewport. The report records both warmup routes, the installed
+browser and Playwright versions, build ID, commit, data-access mode, readiness
+statuses, ordered recognized same-origin requests, and the safe `app`, `data`,
+and `bff-upstream` `Server-Timing` durations. Every recorded read-query request
+must contain all three timing values, and the report must contain at least one
+such request so a successful artifact cannot omit service correlation. Each measured
+transition is verified to stay in the same document; a document request or a
+changed `performance.timeOrigin` fails the probe.
+
+Run it only against an approved, ready pre-release stack. Credentials must be
+provided through the environment; they are not command-line arguments and are
+not included in the JSON report. Request query strings are omitted; numeric,
+UUID, string, and percent-encoded identifiers in recognized dynamic routes are
+replaced with `{id}`. Unknown request paths are omitted, and the report
+validator rejects raw, percent-encoded, or unrecognized paths. The probe fails
+for missing credentials, unready endpoints, failed authentication/route
+rendering, unsuccessful recognized same-origin requests, or an invalid report.
+It applies no timing threshold.
+
+Example using the protected workflow's existing inputs:
+
+```bash
+python -m scripts.probe_frontend_budget \
+  --base-url "$WEB_URL" \
+  --username-env PRERELEASE_SMOKE_USERNAME \
+  --password-env PRERELEASE_SMOKE_PASSWORD \
+  --build-id "$WEB_BUILD_ID" \
+  --commit-sha "$GITHUB_SHA" \
+  --data-access-mode "$DATA_ACCESS_MODE" \
+  --output frontend-performance.json
+```
+
+The JSON uses schema version 1 and sets `score_status` to `unscored`. It
+contains five raw navigation samples, same-document assertions, request
+sequence/status/duration details, the p50 and p95 navigation summaries, and
+per-layer `Server-Timing` p50 values.
+The release workflow uploads it as the separate
+`darkube-prerelease-frontend-budget` artifact. This artifact is measured
+release evidence; it is not a provider-independent baseline and does not close
+C3. C3 stays open until an owner approves the metric, target, aggregation, and
+evidence policy and accepts a successful warmed-stack artifact.
+
 ## Deterministic end-to-end trace contract
 
 Use `scripts/diagnose_page_load.py` with a JSON artifact containing one

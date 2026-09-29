@@ -155,4 +155,76 @@ describe("useSnapshotLifecycle", () => {
     await firstLoad!;
     await secondLoad!;
   });
+
+  it("keeps one polling interval across mode changes and polls only with current Atlas mode", async () => {
+    vi.useFakeTimers();
+    const readAtlasSnapshotMock = vi.mocked(api.readAtlasSnapshot);
+    readAtlasSnapshotMock.mockResolvedValue({ roots: [], index: {}, users_map: {} } as never);
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval");
+    const ownerIds = [1, 2];
+    const pollTimerIds = () =>
+      setIntervalSpy.mock.calls.flatMap(([, delay], index) =>
+        delay === 45_000 ? [setIntervalSpy.mock.results[index]?.value] : [],
+      );
+    const clearedPollIntervals = () =>
+      clearIntervalSpy.mock.calls.filter(([timer]) => pollTimerIds().includes(timer));
+
+    const { rerender, unmount } = renderHook(
+      ({ mode }) =>
+        useSnapshotLifecycle({
+          user: baseUser,
+          mode,
+          parsedCycleId: 12,
+          ownerIds,
+          ownerIdsError: "",
+        }),
+      { initialProps: { mode: "atlas" } },
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(pollTimerIds()).toHaveLength(1);
+    expect(readAtlasSnapshotMock).toHaveBeenCalledWith(
+      expect.objectContaining({ include_analysis: true }),
+    );
+    readAtlasSnapshotMock.mockClear();
+
+    rerender({ mode: "dashboard" });
+    expect(pollTimerIds()).toHaveLength(1);
+    expect(clearedPollIntervals()).toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(readAtlasSnapshotMock).toHaveBeenCalledWith(
+      expect.objectContaining({ include_analysis: false }),
+    );
+    readAtlasSnapshotMock.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000);
+    });
+    expect(readAtlasSnapshotMock).not.toHaveBeenCalled();
+
+    rerender({ mode: "atlas" });
+    expect(pollTimerIds()).toHaveLength(1);
+    expect(clearedPollIntervals()).toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(readAtlasSnapshotMock).toHaveBeenCalledWith(
+      expect.objectContaining({ include_analysis: true }),
+    );
+    readAtlasSnapshotMock.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000);
+    });
+    expect(readAtlasSnapshotMock).toHaveBeenCalledTimes(1);
+    expect(readAtlasSnapshotMock).toHaveBeenCalledWith(
+      expect.objectContaining({ include_analysis: true }),
+    );
+
+    unmount();
+    expect(clearedPollIntervals()).toHaveLength(1);
+  });
 });

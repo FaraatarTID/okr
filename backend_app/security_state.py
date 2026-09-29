@@ -11,7 +11,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
-from typing import Optional, Protocol
+from typing import Literal, Optional, Protocol
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,13 +23,109 @@ from backend_app.config import BackendSettings, get_backend_settings
 _LOGGER = logging.getLogger(__name__)
 _SQLITE_ADAPTER_REGISTERED = False
 _SQLITE_ADAPTER_LOCK = Lock()
+_SESSION_CLEANUP_BATCH_SIZE = 100
 
 
 class SecurityStateUnavailableError(RuntimeError):
     """Raised when security state backend is unavailable in fail-closed mode."""
 
 
+SessionRegistryStatus = Literal["active", "revoked", "unknown"]
+
+
+class SessionRegistrationConflictError(RuntimeError):
+    """Raised when one session digest is registered with conflicting data."""
+
+
+class ReservedSecurityStateKeyError(ValueError):
+    """Raised when generic application state addresses internal registry data."""
+
+
+def is_session_registry_state_key(key: str) -> bool:
+    return str(key).startswith("session-registry:")
+
+
+def _validate_generic_state_key(key: str) -> None:
+    if is_session_registry_state_key(key):
+        raise ReservedSecurityStateKeyError(
+            "The session-registry state namespace is reserved."
+        )
+
+
+def _session_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("Session timestamps must include a timezone.")
+    return value.astimezone(timezone.utc)
+
+
+def _session_datetime_text(value: datetime) -> str:
+    return _session_datetime(value).isoformat(timespec="microseconds")
+
+
+def _session_epoch_microseconds(value: datetime) -> str:
+    instant = _session_datetime(value)
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    delta = instant - epoch
+    microseconds = (
+        delta.days * 86_400_000_000 + delta.seconds * 1_000_000 + delta.microseconds
+    )
+    if microseconds < 0:
+        raise ValueError("Session timestamps must not predate the Unix epoch.")
+    return f"{microseconds:020d}"
+
+
+def _session_datetime_from_text(value: object) -> datetime:
+    if not isinstance(value, str):
+        raise ValueError("Session timestamp is missing.")
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("Session timestamp has no timezone.")
+    return parsed.astimezone(timezone.utc)
+
+
+def _session_record(value: object) -> dict[str, object]:
+    import json
+
+    try:
+        record = json.loads(str(value))
+        if (
+            not isinstance(record, dict)
+            or not isinstance(record.get("actor_id"), str)
+            or not str(record.get("actor_id")).strip()
+            or record.get("status") not in {"active", "revoked"}
+        ):
+            raise ValueError("Session record fields are invalid.")
+        _session_datetime_from_text(record.get("expires_at"))
+        return record
+    except Exception as exc:
+        raise SecurityStateUnavailableError(
+            "Session registry record is malformed."
+        ) from exc
+
+
+def _validate_session_identity(
+    *, session_digest: str, actor_id: str | None = None
+) -> None:
+    digest = str(session_digest or "")
+    if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        raise ValueError("Session digest must be a lowercase SHA-256 hex digest.")
+    if actor_id is not None and not str(actor_id).strip():
+        raise ValueError("Session actor ID must not be empty.")
+
+
 class SecurityStateStore(Protocol):
+    def register_session(
+        self, *, session_digest: str, actor_id: str, expires_at: datetime
+    ) -> None: ...
+
+    def check_session(
+        self, *, session_digest: str, actor_id: str, now: datetime
+    ) -> SessionRegistryStatus: ...
+
+    def revoke_session(
+        self, *, session_digest: str, now: datetime
+    ) -> SessionRegistryStatus: ...
+
     def register_nonce_once(
         self,
         *,
@@ -94,6 +190,7 @@ class InMemorySecurityStateStore:
         self._rate_events: dict[str, deque[float]] = defaultdict(deque)
         self._idem_records: dict[str, dict] = {}
         self._app_state: dict[str, str] = {}
+        self._sessions: dict[str, dict[str, object]] = {}
         self._lock = Lock()
 
     def clear(self) -> None:
@@ -101,6 +198,61 @@ class InMemorySecurityStateStore:
             self._nonce_seen.clear()
             self._rate_events.clear()
             self._idem_records.clear()
+            self._sessions.clear()
+
+    def register_session(
+        self, *, session_digest: str, actor_id: str, expires_at: datetime
+    ) -> None:
+        _validate_session_identity(session_digest=session_digest, actor_id=actor_id)
+        expiry = _session_datetime_text(expires_at)
+        with self._lock:
+            record = self._sessions.get(session_digest)
+            if record is not None:
+                if record["actor_id"] != actor_id or record["expires_at"] != expiry:
+                    raise SessionRegistrationConflictError(
+                        "Session digest is already registered with different data."
+                    )
+                return
+            self._sessions[session_digest] = {
+                "actor_id": actor_id,
+                "expires_at": expiry,
+                "status": "active",
+                "created_at": _session_datetime_text(datetime.now(timezone.utc)),
+                "revoked_at": None,
+            }
+
+    def check_session(
+        self, *, session_digest: str, actor_id: str, now: datetime
+    ) -> SessionRegistryStatus:
+        _validate_session_identity(session_digest=session_digest, actor_id=actor_id)
+        instant = _session_datetime(now)
+        with self._lock:
+            record = self._sessions.get(session_digest)
+            if record is None:
+                return "unknown"
+            if _session_datetime_from_text(record["expires_at"]) < instant:
+                del self._sessions[session_digest]
+                return "unknown"
+            if record["actor_id"] != actor_id:
+                return "unknown"
+            return record["status"]  # type: ignore[return-value]
+
+    def revoke_session(
+        self, *, session_digest: str, now: datetime
+    ) -> SessionRegistryStatus:
+        _validate_session_identity(session_digest=session_digest)
+        instant = _session_datetime(now)
+        with self._lock:
+            record = self._sessions.get(session_digest)
+            if record is None:
+                return "unknown"
+            if _session_datetime_from_text(record["expires_at"]) < instant:
+                del self._sessions[session_digest]
+                return "unknown"
+            if record["status"] != "revoked":
+                record["status"] = "revoked"
+                record["revoked_at"] = _session_datetime_text(instant)
+            return "revoked"
 
     def register_nonce_once(
         self,
@@ -152,10 +304,12 @@ class InMemorySecurityStateStore:
             return True
 
     def get_app_state(self, key: str) -> Optional[str]:
+        _validate_generic_state_key(key)
         with self._lock:
             return self._app_state.get(key)
 
     def set_app_state(self, key: str, value: str) -> None:
+        _validate_generic_state_key(key)
         with self._lock:
             self._app_state[key] = str(value)
 
@@ -262,12 +416,225 @@ class DatabaseSecurityStateStore:
         self._schema_lock = Lock()
         self._cleanup_lock = Lock()
         self._last_cleanup_at = 0.0
+        self._session_cleanup_cursor: str | None = None
 
     def dispose(self) -> None:
         try:
             self._engine.dispose()
         except Exception as exc:  # best-effort shutdown path
             _LOGGER.debug("Database security state dispose failed: %s", exc)
+
+    def _session_state_key(self, session_digest: str) -> str:
+        _validate_session_identity(session_digest=session_digest)
+        return f"session-registry:{session_digest}"
+
+    def _cleanup_expired_sessions(
+        self, conn, now_dt: datetime, cursor: str | None
+    ) -> str | None:
+        lock_clause = (
+            " FOR UPDATE SKIP LOCKED" if conn.dialect.name == "postgresql" else ""
+        )
+
+        def select_page(after_key: str | None):
+            key_clause = " AND state_key > :after_key" if after_key is not None else ""
+            parameters = {
+                "prefix": "session-registry:%",
+                "limit": _SESSION_CLEANUP_BATCH_SIZE,
+            }
+            if after_key is not None:
+                parameters["after_key"] = after_key
+            return conn.execute(
+                text(
+                    "SELECT state_key, state_value FROM backend_distributed_state "
+                    "WHERE state_key LIKE :prefix"
+                    f"{key_clause} ORDER BY state_key ASC LIMIT :limit{lock_clause}"
+                ),
+                parameters,
+            ).all()
+
+        rows = select_page(cursor)
+        if not rows and cursor is not None:
+            # Wrap at the end so retained early keys cannot pin the sweep forever.
+            rows = select_page(None)
+        if not rows:
+            return None
+        now_aware = now_dt.replace(tzinfo=timezone.utc)
+        for row in rows:
+            try:
+                record = _session_record(row[1])
+                expires_at = _session_datetime_from_text(record["expires_at"])
+            except SecurityStateUnavailableError:
+                # Preserve malformed data so its direct registry check fails closed.
+                continue
+            if expires_at < now_aware:
+                conn.execute(
+                    text(
+                        "DELETE FROM backend_distributed_state "
+                        "WHERE state_key = :key AND state_value = :value"
+                    ),
+                    {"key": str(row[0]), "value": row[1]},
+                )
+        return str(rows[-1][0])
+
+    def _load_session_for_update(self, conn, key: str):
+        lock_clause = " FOR UPDATE" if conn.dialect.name == "postgresql" else ""
+        return conn.execute(
+            text(
+                "SELECT state_value FROM backend_distributed_state "
+                f"WHERE state_key = :key{lock_clause}"
+            ),
+            {"key": key},
+        ).first()
+
+    def _write_session_record(self, conn, key: str, record: dict[str, object]) -> None:
+        import json
+
+        conn.execute(
+            text(
+                "UPDATE backend_distributed_state SET state_value = :value, "
+                "updated_at = :updated_at WHERE state_key = :key"
+            ),
+            {
+                "key": key,
+                "value": json.dumps(record, separators=(",", ":")),
+                "updated_at": _utc_naive_from_epoch(time.time()),
+            },
+        )
+
+    def register_session(
+        self, *, session_digest: str, actor_id: str, expires_at: datetime
+    ) -> None:
+        self._ensure_schema()
+        _validate_session_identity(session_digest=session_digest, actor_id=actor_id)
+        expiry = _session_datetime_text(expires_at)
+        key = self._session_state_key(session_digest)
+        import json
+
+        cleanup_now = time.time()
+        self._cleanup_if_due(
+            now_dt=_utc_naive_from_epoch(cleanup_now), now_ts=cleanup_now
+        )
+
+        try:
+            with self._engine.begin() as conn:
+                row = self._load_session_for_update(conn, key)
+                if row is None:
+                    now_text = _session_datetime_text(datetime.now(timezone.utc))
+                    value = json.dumps(
+                        {
+                            "actor_id": actor_id,
+                            "expires_at": expiry,
+                            "status": "active",
+                            "created_at": now_text,
+                            "revoked_at": None,
+                        },
+                        separators=(",", ":"),
+                    )
+                    inserted = conn.execute(
+                        text(
+                            "INSERT INTO backend_distributed_state "
+                            "(state_key, state_value, updated_at) "
+                            "VALUES (:key, :value, :updated_at) "
+                            "ON CONFLICT(state_key) DO NOTHING"
+                        ),
+                        {
+                            "key": key,
+                            "value": value,
+                            "updated_at": _utc_naive_from_epoch(time.time()),
+                        },
+                    )
+                    if inserted.rowcount and int(inserted.rowcount) > 0:
+                        return
+                    row = self._load_session_for_update(conn, key)
+                    if row is None:
+                        raise SecurityStateUnavailableError(
+                            "Session registry registration outcome is inconsistent."
+                        )
+                record = _session_record(row[0])
+                if record["actor_id"] != actor_id or record["expires_at"] != expiry:
+                    raise SessionRegistrationConflictError(
+                        "Session digest is already registered with different data."
+                    )
+        except (SecurityStateUnavailableError, SessionRegistrationConflictError):
+            raise
+        except SQLAlchemyError as exc:
+            raise SecurityStateUnavailableError(
+                "Session registry registration is unavailable."
+            ) from exc
+
+    def check_session(
+        self, *, session_digest: str, actor_id: str, now: datetime
+    ) -> SessionRegistryStatus:
+        self._ensure_schema()
+        _validate_session_identity(session_digest=session_digest, actor_id=actor_id)
+        instant = _session_datetime(now)
+        key = self._session_state_key(session_digest)
+        instant_ts = instant.timestamp()
+        self._cleanup_if_due(
+            now_dt=_utc_naive_from_epoch(instant_ts), now_ts=instant_ts
+        )
+        try:
+            with self._engine.begin() as conn:
+                row = self._load_session_for_update(conn, key)
+                if row is None:
+                    return "unknown"
+                record = _session_record(row[0])
+                if _session_datetime_from_text(record["expires_at"]) < instant:
+                    conn.execute(
+                        text(
+                            "DELETE FROM backend_distributed_state "
+                            "WHERE state_key = :key"
+                        ),
+                        {"key": key},
+                    )
+                    return "unknown"
+                if record["actor_id"] != actor_id:
+                    return "unknown"
+                return record["status"]  # type: ignore[return-value]
+        except SecurityStateUnavailableError:
+            raise
+        except SQLAlchemyError as exc:
+            raise SecurityStateUnavailableError(
+                "Session registry check is unavailable."
+            ) from exc
+
+    def revoke_session(
+        self, *, session_digest: str, now: datetime
+    ) -> SessionRegistryStatus:
+        self._ensure_schema()
+        _validate_session_identity(session_digest=session_digest)
+        instant = _session_datetime(now)
+        key = self._session_state_key(session_digest)
+        instant_ts = instant.timestamp()
+        self._cleanup_if_due(
+            now_dt=_utc_naive_from_epoch(instant_ts), now_ts=instant_ts
+        )
+        try:
+            with self._engine.begin() as conn:
+                row = self._load_session_for_update(conn, key)
+                if row is None:
+                    return "unknown"
+                record = _session_record(row[0])
+                if _session_datetime_from_text(record["expires_at"]) < instant:
+                    conn.execute(
+                        text(
+                            "DELETE FROM backend_distributed_state "
+                            "WHERE state_key = :key"
+                        ),
+                        {"key": key},
+                    )
+                    return "unknown"
+                if record["status"] != "revoked":
+                    record["status"] = "revoked"
+                    record["revoked_at"] = _session_datetime_text(instant)
+                    self._write_session_record(conn, key, record)
+                return "revoked"
+        except SecurityStateUnavailableError:
+            raise
+        except SQLAlchemyError as exc:
+            raise SecurityStateUnavailableError(
+                "Session registry revocation is unavailable."
+            ) from exc
 
     def _ensure_schema(self) -> None:
         if self._schema_ready:
@@ -424,6 +791,7 @@ class DatabaseSecurityStateStore:
             ):
                 return
             try:
+                session_cleanup_cursor = self._session_cleanup_cursor
                 with self._engine.begin() as conn:
                     conn.execute(
                         text(
@@ -443,10 +811,14 @@ class DatabaseSecurityStateStore:
                         ),
                         {"now_dt": now_dt},
                     )
+                    session_cleanup_cursor = self._cleanup_expired_sessions(
+                        conn, now_dt, self._session_cleanup_cursor
+                    )
             except SQLAlchemyError as exc:
                 raise SecurityStateUnavailableError(
                     "Distributed security state cleanup failed."
                 ) from exc
+            self._session_cleanup_cursor = session_cleanup_cursor
             self._last_cleanup_at = float(now_ts)
 
     def register_nonce_once(
@@ -546,6 +918,14 @@ class DatabaseSecurityStateStore:
             ) from exc
 
     def get_app_state(self, key: str) -> Optional[str]:
+        return self._get_app_state(key, strict=False)
+
+    def get_app_state_strict(self, key: str) -> Optional[str]:
+        """Read app state while preserving provider failures for strict callers."""
+        return self._get_app_state(key, strict=True)
+
+    def _get_app_state(self, key: str, *, strict: bool) -> Optional[str]:
+        _validate_generic_state_key(key)
         self._ensure_schema()
         try:
             with self._engine.connect() as conn:
@@ -558,9 +938,14 @@ class DatabaseSecurityStateStore:
                 return str(row[0]) if row else None
         except SQLAlchemyError as exc:
             _LOGGER.debug("Failed to get distributed app state '%s': %s", key, exc)
+            if strict:
+                raise SecurityStateUnavailableError(
+                    "Distributed application state is unavailable."
+                ) from exc
             return None
 
     def set_app_state(self, key: str, value: str) -> None:
+        _validate_generic_state_key(key)
         self._ensure_schema()
         now_dt = _utc_naive_from_epoch(time.time())
         try:
@@ -696,6 +1081,91 @@ class RedisSecurityStateStore:
     return 1
     """
 
+    _REGISTER_SESSION_LUA = """
+    local function expire_after_last_microsecond(expires_at)
+        local expires_ms = tonumber(string.sub(expires_at, 1, 17))
+        local sub_ms = tonumber(string.sub(expires_at, 18, 20))
+        if sub_ms > 0 then expires_ms = expires_ms + 1 end
+        redis.call('PEXPIREAT', KEYS[1], expires_ms + 1)
+    end
+    local current = redis.call('GET', KEYS[1])
+    if not current then
+        redis.call('SET', KEYS[1], ARGV[3])
+        expire_after_last_microsecond(ARGV[2])
+        return 1
+    end
+    local ok, record = pcall(cjson.decode, current)
+    if not ok or type(record) ~= 'table'
+       or type(record.actor_id) ~= 'string'
+       or string.len(record.actor_id) == 0
+       or type(record.expires_at) ~= 'string'
+       or string.len(record.expires_at) ~= 20
+       or string.find(record.expires_at, '%D')
+       or record.expires_at > '00253402300799999999'
+       or (record.status ~= 'active' and record.status ~= 'revoked') then
+        return -2
+    end
+    if record.actor_id ~= ARGV[1] or record.expires_at ~= ARGV[2] then
+        return -1
+    end
+    expire_after_last_microsecond(record.expires_at)
+    return 0
+    """
+
+    _CHECK_SESSION_LUA = """
+    local current = redis.call('GET', KEYS[1])
+    if not current then return 0 end
+    local ok, record = pcall(cjson.decode, current)
+    if not ok or type(record) ~= 'table'
+       or type(record.actor_id) ~= 'string'
+       or string.len(record.actor_id) == 0
+       or type(record.expires_at) ~= 'string'
+       or string.len(record.expires_at) ~= 20
+       or string.find(record.expires_at, '%D')
+       or record.expires_at > '00253402300799999999'
+       or (record.status ~= 'active' and record.status ~= 'revoked') then
+        return -2
+    end
+    if record.expires_at < ARGV[2] then
+        redis.call('DEL', KEYS[1])
+        return 0
+    end
+    if record.actor_id ~= ARGV[1] then return 0 end
+    if record.status == 'revoked' then return 2 end
+    return 1
+    """
+
+    _REVOKE_SESSION_LUA = """
+    local function expire_after_last_microsecond(expires_at)
+        local expires_ms = tonumber(string.sub(expires_at, 1, 17))
+        local sub_ms = tonumber(string.sub(expires_at, 18, 20))
+        if sub_ms > 0 then expires_ms = expires_ms + 1 end
+        redis.call('PEXPIREAT', KEYS[1], expires_ms + 1)
+    end
+    local current = redis.call('GET', KEYS[1])
+    if not current then return 0 end
+    local ok, record = pcall(cjson.decode, current)
+    if not ok or type(record) ~= 'table'
+       or type(record.actor_id) ~= 'string'
+       or string.len(record.actor_id) == 0
+       or type(record.expires_at) ~= 'string'
+       or string.len(record.expires_at) ~= 20
+       or string.find(record.expires_at, '%D')
+       or record.expires_at > '00253402300799999999'
+       or (record.status ~= 'active' and record.status ~= 'revoked') then
+        return -2
+    end
+    if record.expires_at < ARGV[1] then
+        redis.call('DEL', KEYS[1])
+        return 0
+    end
+    record.status = 'revoked'
+    if not record.revoked_at then record.revoked_at = ARGV[1] end
+    redis.call('SET', KEYS[1], cjson.encode(record))
+    expire_after_last_microsecond(record.expires_at)
+    return 2
+    """
+
     def __init__(self, *, redis_url: str, key_prefix: str = "okr:security") -> None:
         safe_redis_url = str(redis_url or "").strip()
         if not safe_redis_url:
@@ -732,6 +1202,108 @@ class RedisSecurityStateStore:
     def _nonce_key(self, nonce: str) -> str:
         nonce_hash = hashlib.sha256(str(nonce).encode("utf-8")).hexdigest()
         return f"{self._key_prefix}:nonce:{nonce_hash}"
+
+    def _session_key(self, session_digest: str) -> str:
+        _validate_session_identity(session_digest=session_digest)
+        return f"{self._key_prefix}:session:{session_digest}"
+
+    def register_session(
+        self, *, session_digest: str, actor_id: str, expires_at: datetime
+    ) -> None:
+        _validate_session_identity(session_digest=session_digest, actor_id=actor_id)
+        expiry = _session_epoch_microseconds(expires_at)
+        import json
+
+        record = json.dumps(
+            {
+                "actor_id": actor_id,
+                "expires_at": expiry,
+                "status": "active",
+                "created_at": _session_datetime_text(datetime.now(timezone.utc)),
+                "revoked_at": None,
+            },
+            separators=(",", ":"),
+        )
+        expiry_arg = expiry
+        try:
+            result = int(
+                self._client.eval(
+                    self._REGISTER_SESSION_LUA,
+                    1,
+                    self._session_key(session_digest),
+                    actor_id,
+                    expiry_arg,
+                    record,
+                )
+            )
+        except Exception as exc:
+            raise SecurityStateUnavailableError(
+                "Redis session registry registration is unavailable."
+            ) from exc
+        if result in {0, 1}:
+            return
+        if result == -1:
+            raise SessionRegistrationConflictError(
+                "Session digest is already registered with different data."
+            )
+        raise SecurityStateUnavailableError(
+            "Redis session registry record is malformed."
+        )
+
+    def check_session(
+        self, *, session_digest: str, actor_id: str, now: datetime
+    ) -> SessionRegistryStatus:
+        _validate_session_identity(session_digest=session_digest, actor_id=actor_id)
+        instant = _session_epoch_microseconds(now)
+        try:
+            result = int(
+                self._client.eval(
+                    self._CHECK_SESSION_LUA,
+                    1,
+                    self._session_key(session_digest),
+                    actor_id,
+                    instant,
+                )
+            )
+        except Exception as exc:
+            raise SecurityStateUnavailableError(
+                "Redis session registry check is unavailable."
+            ) from exc
+        if result == 0:
+            return "unknown"
+        if result == 1:
+            return "active"
+        if result == 2:
+            return "revoked"
+        raise SecurityStateUnavailableError(
+            "Redis session registry record is malformed."
+        )
+
+    def revoke_session(
+        self, *, session_digest: str, now: datetime
+    ) -> SessionRegistryStatus:
+        _validate_session_identity(session_digest=session_digest)
+        instant = _session_epoch_microseconds(now)
+        try:
+            result = int(
+                self._client.eval(
+                    self._REVOKE_SESSION_LUA,
+                    1,
+                    self._session_key(session_digest),
+                    instant,
+                )
+            )
+        except Exception as exc:
+            raise SecurityStateUnavailableError(
+                "Redis session registry revocation is unavailable."
+            ) from exc
+        if result == 0:
+            return "unknown"
+        if result == 2:
+            return "revoked"
+        raise SecurityStateUnavailableError(
+            "Redis session registry record is malformed."
+        )
 
     def _rate_limit_key(
         self,
@@ -802,15 +1374,28 @@ class RedisSecurityStateStore:
             ) from exc
 
     def get_app_state(self, key: str) -> Optional[str]:
+        return self._get_app_state(key, strict=False)
+
+    def get_app_state_strict(self, key: str) -> Optional[str]:
+        """Read Redis app state while preserving provider failures for strict callers."""
+        return self._get_app_state(key, strict=True)
+
+    def _get_app_state(self, key: str, *, strict: bool) -> Optional[str]:
+        _validate_generic_state_key(key)
         try:
             # redis-py .get() returns bytes or None
             value = self._client.get(f"{self._key_prefix}:state:{key}")
             return value.decode("utf-8") if value is not None else None
         except Exception as exc:
             _LOGGER.debug("Failed to get Redis app state '%s': %s", key, exc)
+            if strict:
+                raise SecurityStateUnavailableError(
+                    "Redis application state is unavailable."
+                ) from exc
             return None
 
     def set_app_state(self, key: str, value: str) -> None:
+        _validate_generic_state_key(key)
         try:
             self._client.set(f"{self._key_prefix}:state:{key}", str(value))
         except Exception as exc:
@@ -1056,14 +1641,84 @@ def check_rate_limit_window(
 
 def get_app_state(key: str) -> Optional[str]:
     """Retrieve shared application state across all cluster nodes."""
+    _validate_generic_state_key(key)
     try:
         return _get_store().get_app_state(key)
     except SecurityStateUnavailableError:
         return _fallback_to_memory_store().get_app_state(key)
 
 
+def _shared_app_state_store() -> SecurityStateStore:
+    """Return the configured provider only, rejecting dev-mode factory fallback."""
+    settings = get_backend_settings()
+    backend = str(settings.security_state_backend or "memory").strip().lower()
+    store = _get_store()
+    expected_type = {
+        "memory": InMemorySecurityStateStore,
+        "database": DatabaseSecurityStateStore,
+        "redis": RedisSecurityStateStore,
+    }.get(backend)
+    if expected_type is None or not isinstance(store, expected_type):
+        raise SecurityStateUnavailableError(
+            "Configured shared application state provider is unavailable."
+        )
+    return store
+
+
+def get_shared_app_state(key: str) -> Optional[str]:
+    """Read shared state without falling back to process-local memory."""
+    _validate_generic_state_key(key)
+    store = _shared_app_state_store()
+    if isinstance(store, (DatabaseSecurityStateStore, RedisSecurityStateStore)):
+        return store.get_app_state_strict(key)
+    return store.get_app_state(key)
+
+
+def _session_store() -> SecurityStateStore:
+    settings = get_backend_settings()
+    backend = str(settings.security_state_backend or "memory").strip().lower()
+    store = _get_store()
+    if backend == "database" and not isinstance(store, DatabaseSecurityStateStore):
+        raise SecurityStateUnavailableError(
+            "Configured database session registry is unavailable."
+        )
+    if backend == "redis" and not isinstance(store, RedisSecurityStateStore):
+        raise SecurityStateUnavailableError(
+            "Configured Redis session registry is unavailable."
+        )
+    return store
+
+
+def register_session(
+    *, session_digest: str, actor_id: str, expires_at: datetime
+) -> None:
+    """Atomically register a session using the configured security-state provider."""
+    _session_store().register_session(
+        session_digest=session_digest,
+        actor_id=actor_id,
+        expires_at=expires_at,
+    )
+
+
+def check_session(
+    *, session_digest: str, actor_id: str, now: datetime
+) -> SessionRegistryStatus:
+    """Return registry state; provider failures propagate as unavailable errors."""
+    return _session_store().check_session(
+        session_digest=session_digest,
+        actor_id=actor_id,
+        now=now,
+    )
+
+
+def revoke_session(*, session_digest: str, now: datetime) -> SessionRegistryStatus:
+    """Atomically revoke a session using the configured security-state provider."""
+    return _session_store().revoke_session(session_digest=session_digest, now=now)
+
+
 def set_app_state(key: str, value: str) -> None:
     """Update shared application state across all cluster nodes."""
+    _validate_generic_state_key(key)
     try:
         _get_store().set_app_state(key, value)
     except SecurityStateUnavailableError:
@@ -1071,6 +1726,12 @@ def set_app_state(key: str, value: str) -> None:
         if _is_production(settings):
             raise
         _fallback_to_memory_store().set_app_state(key, value)
+
+
+def set_shared_app_state(key: str, value: str) -> None:
+    """Write shared state using only the explicitly configured provider."""
+    _validate_generic_state_key(key)
+    _shared_app_state_store().set_app_state(key, value)
 
 
 def reserve_idempotency_key(

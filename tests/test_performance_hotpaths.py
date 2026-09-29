@@ -416,11 +416,16 @@ def test_audit_summary_query_budget_guard(isolated_db):
 
 def test_job_polling_query_budget_guard(isolated_db, monkeypatch):
     from src.database import get_engine
+    from src.crud import create_user
     from backend_app.jobs import enqueue_job, get_job
     import backend_app.main as backend_main
     from fastapi import status
+    from tests.session_registry_test_support import attach_registered_test_session
 
     client = TestClient(backend_main.app)
+    client.headers.update({"x-okr-token-version": "1"})
+    poller = create_user("poller", "poller-pass")
+    attach_registered_test_session(client, actor_id=poller.id)
     job = enqueue_job(
         kind="ai.generate_json",
         payload={"prompt": "Return JSON"},
@@ -438,11 +443,8 @@ def test_job_polling_query_budget_guard(isolated_db, monkeypatch):
     # attribute changes nothing and the REAL dependency runs regardless. A previous
     # version of this test patched it anyway, appearing to relax a check while doing
     # nothing - worse than no patch, because it turns an open question into a settled
-    # one. The dependency passes here because enforcement is off in the test
-    # environment. To genuinely relax or tighten it use
-    # `app.dependency_overrides[backend_main.require_service_access]`, as
-    # tests/test_control_plane_environment_routes.py:325 does - and clear the override
-    # afterwards, because `backend_main.app` is a session-wide singleton.
+    # one. This fixture registers a real session bound to the resolved actor so
+    # the shared dependency exercises current account and session state checks.
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor",
@@ -455,7 +457,9 @@ def test_job_polling_query_budget_guard(isolated_db, monkeypatch):
         response_holder["status_code"] = response.status_code
 
     q_endpoint = _count_queries(engine, _poll_request)
-    assert q_endpoint <= 1
+    # The shared auth dependency reads current account scope before the job
+    # lookup so an account version bump takes effect on this request.
+    assert q_endpoint <= 5
     assert response_holder.get("status_code") == status.HTTP_200_OK
 
 
@@ -484,8 +488,9 @@ def test_performance_query_budgets_for_read_endpoints(isolated_db, monkeypatch):
     usernames = [user.username for user in users if user.username]
     owner_ids = {user.id for user in users if user.id is not None}
 
-    def _admin_scope(_actor):
+    def _admin_scope(_actor, token_version=None):
         return {
+            "actor_id": users[0].id,
             "owner_ids": owner_ids,
             "usernames": set(usernames),
             "is_admin": True,
@@ -495,11 +500,13 @@ def test_performance_query_budgets_for_read_endpoints(isolated_db, monkeypatch):
         return "admin"
 
     client = TestClient(backend_main.app)
+    client.headers.update({"x-okr-token-version": "1"})
+    from tests.session_registry_test_support import attach_registered_test_session
 
-    # See the note on the other budget test: patching `require_service_access` through
-    # the module attribute is a no-op, because the route binds the dependency at
-    # construction time. Removed rather than reworked, since the real dependency already
-    # runs and passes here.
+    attach_registered_test_session(client, actor_id=users[0].id)
+
+    # Keep the real dependency enabled; the test session is registered above and
+    # is bound to the actor ID returned by this scope fixture.
     monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: False)
     monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", _admin_scope)
     monkeypatch.setattr(backend_main, "_resolve_actor", _dummy_actor)

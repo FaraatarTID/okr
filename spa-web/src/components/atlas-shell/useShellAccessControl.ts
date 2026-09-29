@@ -15,6 +15,7 @@ import { clearResourceCache } from "@/lib/resourceCache";
 
 type UseShellAccessControlInput = {
   authHydrated: boolean;
+  deepLinkReady?: boolean;
   user: AuthUser | null;
   isAdmin: boolean;
   isManager: boolean;
@@ -25,7 +26,6 @@ type UseShellAccessControlInput = {
   adminPdfHealth: AdminPdfHealthResponse | null;
   adminAuditSummary: AuditSummaryView | null;
   routerReplace: (href: string) => void;
-  handleSidebarModeSelect: (nextMode: string) => void;
   loadAdminResources: (activeUser: AuthUser) => Promise<void>;
   loadAdminHealth: (activeUser: AuthUser, liveProbe: boolean) => Promise<void>;
   loadAdminAuditSummary: (activeUser: AuthUser) => Promise<void>;
@@ -35,6 +35,7 @@ type UseShellAccessControlInput = {
 
 export default function useShellAccessControl({
   authHydrated,
+  deepLinkReady = true,
   user,
   isAdmin,
   isManager,
@@ -45,7 +46,6 @@ export default function useShellAccessControl({
   adminPdfHealth,
   adminAuditSummary,
   routerReplace,
-  handleSidebarModeSelect,
   loadAdminResources,
   loadAdminHealth,
   loadAdminAuditSummary,
@@ -78,13 +78,13 @@ export default function useShellAccessControl({
   }, [authHydrated, routerReplace, user]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !deepLinkReady) {
       return;
     }
     // Managers may enter admin mode but are restricted to the cycles tab
     // (per-manager active cycles). Members are redirected out entirely.
     if (!canManageCycles && mode === "admin") {
-      handleSidebarModeSelect("atlas");
+      routerReplace("/");
       return;
     }
     if (!isAdmin && mode === "admin" && adminTab !== "cycles") {
@@ -96,7 +96,17 @@ export default function useShellAccessControl({
     // Listed anyway: the sibling effects below include it, and the correctness
     // of the admin gate should not depend on how `isManager` happens to be
     // derived at the call site.
-  }, [adminTab, handleSidebarModeSelect, isAdmin, isManager, mode, setAdminTab, user]);
+  }, [
+    adminTab,
+    canManageCycles,
+    deepLinkReady,
+    isAdmin,
+    isManager,
+    mode,
+    routerReplace,
+    setAdminTab,
+    user,
+  ]);
 
   useEffect(() => {
     // Managers also need admin resources (users list feeds the cycle-owner
