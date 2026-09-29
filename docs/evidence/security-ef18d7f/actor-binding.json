@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "release_id": "release-ef18d7f-bff",
+  "captured_at": "2026-09-29T16:04:41Z",
+  "operator": "automated capture by Claude Code at the repository owner's request (no named human operator)",
+  "topology": "bff",
+  "control": "actor_binding",
+  "status": "passed",
+  "observed": "2 of 2 checks passed. a client-supplied X-OKR-Actor that is not the session actor is refused -> 403 INVALID_ACTOR_HEADER; X-OKR-Actor equal to the session actor is accepted -> 422 HTTP_422.",
+  "checks": [
+    {
+      "check": "a client-supplied X-OKR-Actor that is not the session actor is refused",
+      "expected": "403 INVALID_ACTOR_HEADER",
+      "actual": "403 INVALID_ACTOR_HEADER",
+      "passed": true
+    },
+    {
+      "check": "X-OKR-Actor equal to the session actor is accepted",
+      "expected": "not INVALID_ACTOR_HEADER",
+      "actual": "422 HTTP_422",
+      "passed": true
+    }
+  ],
+  "capture_notes": [
+    "Stack: docker compose release overlay on this workstation, images pinned by digest from the release manifest of publish-ghcr.yml run 36591084086 (commit ef18d7f65e4f1ef8829cda3819fe49c8ba204cfa), digests verified by verify-ghcr-signatures run 36592028096. Disposable database and generated secrets.",
+    "Not a production or staging deployment: no real Nginx or TLS in front of it, and no real edge setting X-OKR-Client-IP.",
+    "The web origin was plain HTTP, so the Secure cookie attribute was not observed. session_cookie_protection covers HttpOnly, SameSite and a bounded lifetime only.",
+    "rate_limiting supplies its own X-OKR-Client-IP, standing in for the edge that sets it in a real deployment."
+  ]
+}

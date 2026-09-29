@@ -45,6 +45,13 @@ implemented on 2026-09-29 (D4) with the limits below. Their evidence records in
 [evidence/security-parity.json](evidence/security-parity.json) are dated captures
 for `release-2026-09-14-bff` and still read `pending`: they describe that release,
 not the current code, and are refreshed by a release capture, not by editing them.
+That capture now exists for release `ef18d7f`:
+[evidence/security-parity-ef18d7f.json](evidence/security-parity-ef18d7f.json) records all
+six controls, including origin and rate limiting, as observed. It was taken on a disposable
+local stack of the released image digests over plain HTTP, not on a production deployment
+behind Nginx and TLS, so `Secure` cookies and edge-set client IPs were not observed. The
+`release-2026-09-14-bff` records stay `pending` because that release did not have the
+controls.
 
 - **Origin controls, in `spa-web`, not `spa-bff`.** The browser never reaches the
   BFF; it reaches the `spa-web` route handlers, and `proxyToBff` forwards a fixed

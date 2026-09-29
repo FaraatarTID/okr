@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "release_id": "release-ef18d7f-bff",
+  "captured_at": "2026-09-29T16:04:41Z",
+  "operator": "automated capture by Claude Code at the repository owner's request (no named human operator)",
+  "topology": "bff",
+  "capture_notes": [
+    "Stack: docker compose release overlay on this workstation, images pinned by digest from the release manifest of publish-ghcr.yml run 36591084086 (commit ef18d7f65e4f1ef8829cda3819fe49c8ba204cfa), digests verified by verify-ghcr-signatures run 36592028096. Disposable database and generated secrets.",
+    "Not a production or staging deployment: no real Nginx or TLS in front of it, and no real edge setting X-OKR-Client-IP.",
+    "The web origin was plain HTTP, so the Secure cookie attribute was not observed. session_cookie_protection covers HttpOnly, SameSite and a bounded lifetime only.",
+    "rate_limiting supplies its own X-OKR-Client-IP, standing in for the edge that sets it in a real deployment."
+  ],
+  "controls": [
+    {
+      "name": "session_cookie_protection",
+      "status": "passed",
+      "observed": "6 of 6 checks passed. login succeeds -> 200; session cookie is issued -> present; session cookie is HttpOnly -> HttpOnly; session cookie is SameSite=Lax or Strict -> SameSite=Lax; session cookie has a bounded lifetime -> Max-Age=3600; CSRF cookie is issued -> present.",
+      "artifact": "security-ef18d7f/session-cookie.json"
+    },
+    {
+      "name": "csrf_and_origin_controls",
+      "status": "passed",
+      "observed": "7 of 7 checks passed. cross-site login is refused -> 403 INVALID_ORIGIN; login from a foreign Origin is refused -> 403 INVALID_ORIGIN; same-origin login passes the origin guard -> 401 AUTH_LOCKED_USER; cross-site state change with a valid session is refused -> 403 INVALID_ORIGIN; state change without the CSRF header is refused -> 403 INVALID_CSRF_TOKEN; state change with a wrong CSRF header is refused -> 403 INVALID_CSRF_TOKEN; state change with the matching CSRF header passes the CSRF gate -> 422 HTTP_422.",
+      "artifact": "security-ef18d7f/csrf-origin.json"
+    },
+    {
+      "name": "actor_binding",
+      "status": "passed",
+      "observed": "2 of 2 checks passed. a client-supplied X-OKR-Actor that is not the session actor is refused -> 403 INVALID_ACTOR_HEADER; X-OKR-Actor equal to the session actor is accepted -> 422 HTTP_422.",
+      "artifact": "security-ef18d7f/actor-binding.json"
+    },
+    {
+      "name": "request_signing",
+      "status": "passed",
+      "observed": "4 of 4 checks passed. backend refuses a request with no service token -> 401 HTTP_401; backend refuses a wrong service token -> 401 HTTP_401; a valid token without signature headers is refused -> 401 Missing signed request headers.; a valid token with a forged signature is refused -> 401 Invalid request signature..",
+      "artifact": "security-ef18d7f/request-signing.json"
+    },
+    {
+      "name": "route_allowlisting",
+      "status": "passed",
+      "observed": "3 of 3 checks passed. an unlisted GET route is refused -> 403 ROUTE_NOT_ALLOWLISTED; an unlisted POST route is refused -> 403 ROUTE_NOT_ALLOWLISTED; the removed /v1/state/{key} route is refused -> 403 ROUTE_NOT_ALLOWLISTED.",
+      "artifact": "security-ef18d7f/route-allowlist.json"
+    },
+    {
+      "name": "rate_limiting",
+      "status": "passed",
+      "observed": "4 of 4 checks passed. the limiter refuses an over-budget client -> 429 RATE_LIMITED; the refusal carries Retry-After -> Retry-After=52; attempts accepted before the first refusal -> 60; a different client key is not throttled by that burst -> 401 AUTH_LOCKED_USER.",
+      "artifact": "security-ef18d7f/rate-limit.json"
+    }
+  ]
+}

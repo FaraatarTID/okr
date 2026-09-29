@@ -14,7 +14,8 @@
     "verification": "spa-web/src/lib/origin-guard.test.ts (14 tests) and spa-web/src/lib/session-origin-routes.test.ts (8 tests) against the working tree, mutation-checked, plus the Playwright E2E (17 of 17) against a local build. Unit and local evidence only, not a capture of a deployed stack.",
     "not_released": "The change is not in commit 8f13375 and not in the published release 6150b4ade9203a03fb2829155776d9aafec0f142 (checked 2026-09-29), so no released build exhibits it.",
     "limits": "It is not an allowlist of extra origins. Scheme is not compared. spa-bff itself still reads neither header, so a caller who reaches the BFF directly is outside this control; the BFF is not exposed to the browser. Behaviour behind a real Nginx is untested.",
+    "superseded_by": "docs/evidence/security-parity-ef18d7f.json",
     "status_of_record": "pending",
-    "to_close": "Capture a cross-site request refused with 403 INVALID_ORIGIN and a same-origin request accepted, against the release that contains this change, then replace this file with that capture."
+    "to_close": "Done for release ef18d7f: see superseded_by. This file stays as the record of release-2026-09-14-bff and stays pending, because that release did not have the control."
   }
 }
