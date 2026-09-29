@@ -24,7 +24,7 @@ def _passes_curl_retries(workflow: str) -> bool:
 def test_ci_classifies_backend_frontend_and_shared_changes() -> None:
     text = _workflow_text()
 
-    assert "uses: dorny/paths-filter@v3" in text
+    assert "uses: dorny/paths-filter@v4" in text
     assert "backend:" in text
     assert "frontend:" in text
     assert "shared:" in text
@@ -35,6 +35,19 @@ def test_ci_classifies_backend_frontend_and_shared_changes() -> None:
     assert "'.github/**'" in text
     assert "'deploy/**'" in text
     assert "- '!spa-web/**'" in text
+
+
+def test_workflows_use_node24_setup_uv_action() -> None:
+    workflows = WORKFLOW.parent.glob("*.yml")
+    setup_uv_uses = [
+        line.strip().removeprefix("- ")
+        for workflow in workflows
+        for line in workflow.read_text(encoding="utf-8").splitlines()
+        if "uses: astral-sh/setup-uv@" in line
+    ]
+
+    assert setup_uv_uses
+    assert all(line == "uses: astral-sh/setup-uv@v7" for line in setup_uv_uses)
 
 
 def test_ci_has_a_documentation_only_lane() -> None:
