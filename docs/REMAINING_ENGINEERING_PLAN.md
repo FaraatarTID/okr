@@ -529,8 +529,9 @@ Phase 4, because it needs a decision before it needs code.
   `tests/test_supabase_api_freeze.py`. The deprecation decision is left open on purpose.
 - **P4.5, partly done (2 of 5 modules).** `security.py` and `authentication.py` no longer reach `backend_app.main`
   (#198). Still reaching it: `main_runtime_helpers.py`, `main_workflow_handlers.py`, `main_mutation_handlers.py`, and
-  every router through `main.<name>`. The facade cannot go while about 20 tests patch attributes on `backend_main`; each
-  module move needs its tests moved with it. Per-module status: [compatibility-callers.md](compatibility-callers.md).
+  every router through `main.<name>`. The facade cannot go while tests patch it: measured on 2026-09-30, about 100 `monkeypatch.setattr(backend_main, "<name>", ...)`
+  sites in 19 test files (the earlier "about 20 tests" undercounted), and a module move needs its patch sites moved with it.
+  The next move is not one small PR: see the measured cost table in [compatibility-callers.md](compatibility-callers.md). Per-module status: [compatibility-callers.md](compatibility-callers.md).
 
 ### Dependencies and lint follow-ups (2026-09-29)
 

@@ -46,6 +46,27 @@ Two seams were deliberately kept because callers still depend on them, so their 
 Tests that patched `backend_main._resolve_scope_for_actor` to influence the service dependency were moved to patch
 `backend_app.scope_resolution`, which is the seam the dependency now uses. Handlers and routers still resolve the
 scope through the facade, so patches on the facade keep working there until those modules move.
+### Measured cost of the remaining modules (2026-09-30)
+
+From a text search of `backend_app/` and `tests/` (dynamic access is not counted). "Patch sites" are
+`monkeypatch.setattr(backend_main, "<name>", ...)` calls in tests on a name the module reaches through the facade.
+
+| Module | Names reached through the facade | Of those, patched by tests | Patch sites | Patched names |
+|---|---|---|---|---|
+| `main_runtime_helpers.py` | 2 | 1 | 15 | `get_session_context`; also holds the patched-resolver seam (`_resolve_scope_for_actor` versus `_runtime`) |
+| `main_workflow_handlers.py` | 16 | 5 | 17 | `_resolve_scope_for_actor`, `create_check_in`, `delete_alignment`, `is_supabase_api_mode_enabled`, `update_experiment` |
+| `main_mutation_handlers.py` | 13 | 7 | 20 | `create_goal`, `create_key_result`, `create_objective`, `create_task`, `create_user`, `is_supabase_api_mode_enabled`, `update_task` |
+| `read_query_helpers.py` (not in the table above) | 55 | 8 | 24 | `_resolve_scope_for_actor`, `_serialize_task`, `get_active_cycles`, `get_all_cycles`, `get_all_users`, `get_session_context`, `get_user_by_username`, `summarize_audit_events` |
+
+Why this is not a per-module job like `security.py`:
+
+- `is_supabase_api_mode_enabled` (8 patch sites) and `get_session_context` (15 patch sites) are read through the facade by several of these modules at once. Moving one module makes a test that patches the facade stop affecting it: it fails, or passes against the real function. Both seams have to move together, with their tests, in one change.
+- The routers still bind `Depends(main.require_service_access)`, and three test files override it on the facade.
+- `read_query_helpers.py` reaches the facade 55 ways and was not counted in the first inventory.
+
+Not done, on purpose: no module was moved in this pass. The counts are a text search of one commit, not a proof of what
+a move would break.
+
 ## Launcher surfaces
 
 The supported journey mapping is recorded in [launcher-command-matrix.md](launcher-command-matrix.md). The preferred Docker command is `just start`; the Windows wrappers under `scripts/windows/` remain compatibility entrypoints for operator and local-development workflows. The launcher contract suite passed 2 tests, covering the wrapper command and process-shutdown contracts. `scripts/windows/run_hybrid_app.bat --status` also completed successfully against the live Compose target, showing backend API and Postgres healthy with worker, BFF, and web running, without mutating services.
