@@ -20,6 +20,7 @@ function renderMap(overrides: Partial<React.ComponentProps<typeof AtlasFocusMapP
       atlasRoots={["goal_1"]}
       selectedRef=""
       onSelectRef={vi.fn()}
+      onOpenRef={vi.fn()}
       onAddChild={vi.fn()}
       onCreateGoal={vi.fn()}
       nodeQuery=""
@@ -53,6 +54,57 @@ describe("AtlasFocusMapPanel", () => {
     expect(within(tree).getByText("Build the most trusted planning platform")).toBeInTheDocument();
     fireEvent.click(within(tree).getByRole("button", { name: "Select Cut time-to-first-plan in half" }));
     expect(onSelectRef).toHaveBeenCalledWith("key_result_1");
+  });
+
+  it("selects on a single click and opens details only on double-click", () => {
+    const onSelectRef = vi.fn();
+    const onOpenRef = vi.fn();
+    renderMap({ onSelectRef, onOpenRef });
+
+    const label = screen.getByRole("button", { name: /Select Objective: Make planning feel effortless/ });
+    fireEvent.click(label, { detail: 1 });
+    expect(onSelectRef).toHaveBeenCalledWith("objective_1");
+    expect(onOpenRef).not.toHaveBeenCalled();
+
+    fireEvent.doubleClick(label);
+    expect(onOpenRef).toHaveBeenCalledWith("objective_1");
+
+    const core = screen.getByRole("button", { name: /^Key result: Cut time-to-first-plan in half/ });
+    fireEvent.click(core, { detail: 1 });
+    expect(onSelectRef).toHaveBeenLastCalledWith("key_result_1");
+    fireEvent.doubleClick(core);
+    expect(onOpenRef).toHaveBeenLastCalledWith("key_result_1");
+  });
+
+  it("opens details from the keyboard once a node is selected, and from the selection card", () => {
+    const onSelectRef = vi.fn();
+    const onOpenRef = vi.fn();
+    renderMap({ selectedRef: "goal_1", onSelectRef, onOpenRef });
+
+    const goal = screen.getByRole("button", { name: /^Goal: Build the most trusted planning platform/ });
+    fireEvent.click(goal, { detail: 0 });
+    expect(onOpenRef).toHaveBeenCalledWith("goal_1");
+    expect(onSelectRef).not.toHaveBeenCalled();
+
+    const other = screen.getByRole("button", { name: /^Objective: Make planning feel effortless/ });
+    fireEvent.click(other, { detail: 0 });
+    expect(onSelectRef).toHaveBeenCalledWith("objective_1");
+
+    onOpenRef.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Open details" }));
+    expect(onOpenRef).toHaveBeenCalledWith("goal_1");
+  });
+
+  it("uses the same single/double click behavior in the outline", () => {
+    const onSelectRef = vi.fn();
+    const onOpenRef = vi.fn();
+    renderMap({ onSelectRef, onOpenRef });
+    fireEvent.click(screen.getByRole("button", { name: /Outline/ }));
+    const row = within(screen.getByRole("tree", { name: "Strategy outline" })).getByRole("button", { name: "Select Make planning feel effortless" });
+    fireEvent.click(row, { detail: 1 });
+    expect(onOpenRef).not.toHaveBeenCalled();
+    fireEvent.doubleClick(row);
+    expect(onOpenRef).toHaveBeenCalledWith("objective_1");
   });
 
   it("focuses the selected path and exposes contextual add actions", () => {

@@ -1491,6 +1491,9 @@ export default function AtlasShell() {
           selectedRef={selectedRef}
           onSelectRef={(ref: string) => {
             setSelectedRef(ref);
+          }}
+          onOpenRef={(ref: string) => {
+            setSelectedRef(ref);
             setInspectorModalOpen(true);
           }}
           onAddChild={(parentRef: string) => {

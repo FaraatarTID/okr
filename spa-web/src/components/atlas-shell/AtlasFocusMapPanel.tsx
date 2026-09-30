@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type FocusMapNodeView = {
   type: string;
@@ -34,6 +34,7 @@ type AtlasFocusMapPanelProps = {
   atlasRoots?: string[];
   selectedRef: string;
   onSelectRef: (ref: string) => void;
+  onOpenRef: (ref: string) => void;
   onAddChild: (parentRef: string) => void;
   onCreateGoal: () => void;
   nodeQuery: string;
@@ -188,6 +189,7 @@ export default function AtlasFocusMapPanel({
   atlasRoots,
   selectedRef,
   onSelectRef,
+  onOpenRef,
   onAddChild,
   onCreateGoal,
   nodeQuery,
@@ -253,6 +255,26 @@ export default function AtlasFocusMapPanel({
     }
     return chain;
   }, [atlasIndex, selectedNode]);
+
+  // Keep the selected node in view (e.g. after picking it from the breadcrumb or
+  // outline) without jumping the page when it is already visible.
+  useEffect(() => {
+    if (!selectedRef || view !== "map") return;
+    document
+      .getElementById(`orbit-node-${selectedRef}`)
+      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [selectedRef, view]);
+
+  // Single click selects and focuses; double-click opens details. Pressing Enter
+  // or Space on a node that is already selected opens details for keyboard users
+  // (a keyboard activation reports detail === 0).
+  function activateNode(ref: string, event: { detail: number }): void {
+    if (event.detail === 0 && ref === selectedRef) {
+      onOpenRef(ref);
+      return;
+    }
+    onSelectRef(ref);
+  }
 
   function toggleCollapsed(ref: string): void {
     setCollapsedRefs((previous) => {
@@ -390,7 +412,8 @@ export default function AtlasFocusMapPanel({
                         className="orbit-map__node-core"
                         aria-label={`${TYPE_LABEL[node.type] || node.type}: ${node.title}, ${node.progress}% complete${node.ownerName ? `, owner ${node.ownerName}` : ""}`}
                         aria-pressed={selected}
-                        onClick={() => onSelectRef(node.ref)}
+                        onClick={(event) => activateNode(node.ref, event)}
+                        onDoubleClick={() => onOpenRef(node.ref)}
                         onKeyDown={(event) => {
                           if (event.key === "ArrowRight" && node.children.length) {
                             event.preventDefault();
@@ -416,7 +439,8 @@ export default function AtlasFocusMapPanel({
                         className="orbit-map__node-label"
                         aria-label={`Select ${TYPE_LABEL[node.type] || node.type}: ${node.title}`}
                         aria-pressed={selected}
-                        onClick={() => onSelectRef(node.ref)}
+                        onClick={(event) => activateNode(node.ref, event)}
+                        onDoubleClick={() => onOpenRef(node.ref)}
                       >
                         <span className="orbit-map__node-type">{TYPE_LABEL[node.type] || node.type}</span>
                         <span className="orbit-map__node-title">{node.title}</span>
@@ -449,6 +473,7 @@ export default function AtlasFocusMapPanel({
                 <div className="orbit-map__selection-topline"><span>{TYPE_LABEL[selectedNode.type] || selectedNode.type}</span><span>{selectedNode.progress}%</span></div>
                 <strong>{selectedNode.title}</strong>
                 <span>{statusLabel(selectedNode.progress)}{selectedNode.ownerName && selectedNode.ownerName !== "Unknown" ? ` · ${selectedNode.ownerName}` : ""}</span>
+                <button type="button" onClick={() => onOpenRef(selectedNode.ref)}>Open details</button>
                 {selectedNode.type !== "TASK" ? <button type="button" onClick={() => onAddChild(selectedNode.ref)}>＋ Add {selectedNode.type === "GOAL" ? "objective" : selectedNode.type === "OBJECTIVE" ? "key result" : "task"}</button> : null}
               </aside>
             ) : null}
@@ -468,7 +493,7 @@ export default function AtlasFocusMapPanel({
                 <div key={ref} className={`orbit-map__outline-row orbit-map__outline-row--${node.type.toLowerCase()}`} role="treeitem" aria-level={node.depth + 1} aria-selected={selectedRef === ref}>
                   <span className="orbit-map__outline-indent" style={{ width: `${Math.min(node.depth, 5) * 1.1}rem` }} />
                   {node.children.length ? <button type="button" aria-label={`${collapsed ? "Expand" : "Collapse"} ${node.title}`} aria-expanded={!collapsed} onClick={() => toggleCollapsed(ref)}>{collapsed ? "+" : "−"}</button> : <span className="orbit-map__outline-spacer" />}
-                  <button type="button" className="orbit-map__outline-select" aria-label={`Select ${node.title}`} aria-pressed={selectedRef === ref} onClick={() => onSelectRef(ref)}>
+                  <button type="button" className="orbit-map__outline-select" aria-label={`Select ${node.title}`} aria-pressed={selectedRef === ref} onClick={(event) => activateNode(ref, event)} onDoubleClick={() => onOpenRef(ref)}>
                     <span className="orbit-map__outline-tag" aria-hidden="true">{nodeTagForType(node.type)}</span><span>{node.title}</span>
                   </button>
                   <span className="orbit-map__outline-progress">{node.progress}%</span>
