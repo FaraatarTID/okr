@@ -8,8 +8,16 @@ _LAST_SEEN_INVALIDATION_TS = 0
 def clear_cache_safe():
     """Best-effort cache clear with cluster-wide invalidation broadcast."""
     try:
-        from src.services.distributed_state_service import broadcast_cache_invalidation
+        from src.services.distributed_state_service import (
+            broadcast_cache_invalidation,
+            is_broadcast_configured,
+        )
 
+        if not is_broadcast_configured():
+            _LOGGER.debug(
+                "Skipping cache invalidation broadcast: OKR_BACKEND_API_URL is not set."
+            )
+            return
         # Broadcast to other nodes in the cluster.
         if not broadcast_cache_invalidation():
             _LOGGER.warning("Failed to broadcast distributed cache invalidation.")
