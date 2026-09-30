@@ -46,7 +46,6 @@ def test_bff_policy_routes_exist_in_openapi_and_preserve_exclusions():
             "/v1/admin/observability/metrics",
             "/v1/internal/session-registry/register",
             "/v1/internal/session-registry/revoke",
-            "/v1/internal/cache-invalidation",
             "/v1/state/{key}",
         }
         for path, _method in signatures
@@ -54,10 +53,6 @@ def test_bff_policy_routes_exist_in_openapi_and_preserve_exclusions():
 
     assert all(
         ("/v1/internal/session-registry/" not in route["pathTemplate"])
-        for route in metadata["routes"]
-    )
-    assert all(
-        route["pathTemplate"] != "/v1/internal/cache-invalidation"
         for route in metadata["routes"]
     )
     assert all(

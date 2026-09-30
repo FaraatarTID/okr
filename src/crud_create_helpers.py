@@ -139,7 +139,6 @@ def create_goal_from_crud(
             actor=actor_username,
             details={"goal_id": goal.id, "cycle_id": cycle_id},
         )
-        crud_module.clear_cache_safe()
         return goal
 
 
@@ -222,7 +221,6 @@ def create_objective_from_crud(
             "objective",
             details={"objective_id": objective.id, "goal_id": goal_id},
         )
-        crud_module.clear_cache_safe()
         return objective
 
 
@@ -320,7 +318,6 @@ def create_key_result_from_crud(
             "key_result",
             details={"key_result_id": key_result.id, "objective_id": objective_id},
         )
-        crud_module.clear_cache_safe()
         return key_result
 
 
@@ -422,5 +419,4 @@ def create_task_from_crud(
             "task",
             details={"task_id": task.id, "key_result_id": key_result_id},
         )
-        crud_module.clear_cache_safe()
         return task

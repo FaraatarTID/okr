@@ -131,7 +131,6 @@ def create_cycle_from_crud(
             actor=actor_username,
             details={"cycle_id": cycle.id, "title": title},
         )
-        crud_module.clear_cache_safe()
         return cycle
 
 
@@ -261,7 +260,6 @@ def update_cycle_from_crud(
             actor=actor_username,
             details={"cycle_id": cycle_id, "title": title},
         )
-        crud_module.clear_cache_safe()
         return cycle
 
 
@@ -320,5 +318,4 @@ def delete_cycle_from_crud(
             actor=actor_username,
             details={"cycle_id": cycle_id},
         )
-        crud_module.clear_cache_safe()
         return True

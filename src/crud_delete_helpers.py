@@ -41,7 +41,6 @@ def delete_goal_from_crud(
             session.delete(goal)
             session.commit()
             crud_module.audit_log("delete", "goal", details={"goal_id": goal_id})
-            crud_module.clear_cache_safe()
             return True
         return False
 
@@ -75,7 +74,6 @@ def delete_task_from_crud(
             session.delete(task)
             session.commit()
             crud_module.audit_log("delete", "task", details={"task_id": task_id})
-            crud_module.clear_cache_safe()
             return True
         return False
 
@@ -116,7 +114,6 @@ def delete_objective_from_crud(
             crud_module.audit_log(
                 "delete", "objective", details={"objective_id": objective_id}
             )
-            crud_module.clear_cache_safe()
             return True
         return False
 
@@ -159,6 +156,5 @@ def delete_key_result_from_crud(
                 "delete", "key_result", details={"key_result_id": kr_id}
             )
 
-            crud_module.clear_cache_safe()
             return True
         return False

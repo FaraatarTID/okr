@@ -117,7 +117,6 @@ def create_check_in_from_crud(
                 "experiment_id": experiment_id,
             },
         )
-        crud_module.clear_cache_safe()
         return check_in
 
 

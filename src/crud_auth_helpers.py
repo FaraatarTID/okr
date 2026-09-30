@@ -432,7 +432,6 @@ def create_user_from_crud(
             actor=actor_username or username,
             details={"role": role.value, "target_user_id": user.id},
         )
-        crud_module.clear_cache_safe()
         return user
 
 
@@ -938,7 +937,6 @@ def update_user_from_crud(
             actor=actor_username or user.username,
             details={"user_id": user_id},
         )
-        crud_module.clear_cache_safe()
         return user
 
 
@@ -1007,7 +1005,6 @@ def reset_user_password_from_crud(
             actor=actor_username or username,
             details={"user_id": user_id, "verified": True},
         )
-        crud_module.clear_cache_safe()
         return True
     except PermissionError:
         raise
@@ -1044,7 +1041,6 @@ def ensure_admin_exists_once_from_crud(*, crud_module) -> bool:
                 actor="admin",
                 details={"role": crud_module.UserRole.ADMIN.value},
             )
-            crud_module.clear_cache_safe()
             return True
         admin = session.exec(
             crud_module.select(crud_module.User).where(
@@ -1073,7 +1069,6 @@ def ensure_admin_exists_once_from_crud(*, crud_module) -> bool:
                     actor="admin",
                     details={"placeholder_bootstrap_password_reset": True},
                 )
-                crud_module.clear_cache_safe()
                 return True
         if (
             admin
@@ -1093,7 +1088,6 @@ def ensure_admin_exists_once_from_crud(*, crud_module) -> bool:
                 actor="admin",
                 details={"forced_password_change": True},
             )
-            crud_module.clear_cache_safe()
     return False
 
 

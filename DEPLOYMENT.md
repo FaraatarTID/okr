@@ -41,7 +41,6 @@ Architecture status and deployment intent (2026-02-24)
 - The app is designed for backend-server operation in enterprise environments (`spa-web` + `spa-bff` + `backend-api` + `backend-worker`).
 - For corporate deployments (AWS/ECS/Kubernetes/VM), use the backend-server model from this guide.
 - The distributed resilience plan items are implemented:
-  - cluster-wide cache invalidation signaling
   - URL-backed navigation-pointer restoration/synchronization
   - resilience verification scripts (`scripts/verify_resilience.py`)
 

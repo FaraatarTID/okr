@@ -130,7 +130,6 @@ def create_experiment_from_crud(
                 "after": after_snapshot,
             },
         )
-        crud_module.clear_cache_safe()
         return experiment
 
 
@@ -284,7 +283,6 @@ def update_experiment_from_crud(
                 "after": after_snapshot,
             },
         )
-        crud_module.clear_cache_safe()
         return experiment
 
 

@@ -399,24 +399,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/internal/cache-invalidation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Cache Invalidation Timestamp */
-        get: operations["get_cache_invalidation_timestamp_v1_internal_cache_invalidation_get"];
-        put?: never;
-        /** Set Cache Invalidation Timestamp */
-        post: operations["set_cache_invalidation_timestamp_v1_internal_cache_invalidation_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/internal/session-registry/register": {
         parameters: {
             query?: never;
@@ -1370,11 +1352,6 @@ export interface components {
             token_version?: number | null;
             /** Username */
             username: string;
-        };
-        /** CacheInvalidationRequest */
-        CacheInvalidationRequest: {
-            /** Timestamp */
-            timestamp: string;
         };
         /** CheckInCreateRequest */
         CheckInCreateRequest: {
@@ -3416,84 +3393,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExperimentMutationView"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_cache_invalidation_timestamp_v1_internal_cache_invalidation_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-okr-service-token"?: string | null;
-                "x-okr-signature"?: string | null;
-                "x-okr-timestamp"?: string | null;
-                "x-okr-nonce"?: string | null;
-                "x-okr-key-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_cache_invalidation_timestamp_v1_internal_cache_invalidation_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-okr-service-token"?: string | null;
-                "x-okr-signature"?: string | null;
-                "x-okr-timestamp"?: string | null;
-                "x-okr-nonce"?: string | null;
-                "x-okr-key-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CacheInvalidationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
                 };
             };
             /** @description Validation Error */
