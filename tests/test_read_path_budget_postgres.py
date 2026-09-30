@@ -219,7 +219,6 @@ def postgres_engine(monkeypatch):
         yield engine
     finally:
         engine.dispose()
-        database.reset_direct_db_status()
         with admin.connect() as conn:
             conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
         admin.dispose()
@@ -393,7 +392,6 @@ def pgbouncer_engine(monkeypatch, request):
         yield engine, target_url, database_name, request.param
     finally:
         engine.dispose()
-        database.reset_direct_db_status()
         with admin.connect() as conn:
             conn.execute(
                 text(f'DROP DATABASE IF EXISTS "{database_name}" WITH (FORCE)')
@@ -652,10 +650,6 @@ def test_ritual_snapshot_tcp_fanout_is_measured_on_postgres(
         p1="PostgreSQL snapshot fixture",
         actor_username=user.username,
     )
-    import src.database as database
-
-    database.reset_direct_db_status()
-
     response_payload = None
 
     def _call():
