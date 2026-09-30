@@ -270,7 +270,7 @@ export default function AtlasFocusMapPanel({
       <header className="orbit-map__header">
         <div className="orbit-map__title-group">
           <span className="orbit-map__eyebrow"><span className="orbit-map__signal" /> STRATEGY FIELD</span>
-          <h2 className="orbit-map__title"><span className="orbit-map__sr-only">Focus Map</span><span aria-hidden="true">Focus map</span></h2>
+          <h2 className="orbit-map__title">Focus Map</h2>
           <p className="orbit-map__subtitle">See how today’s work connects to the outcomes that matter.</p>
         </div>
         <div className="orbit-map__actions">
@@ -387,7 +387,7 @@ export default function AtlasFocusMapPanel({
                     <foreignObject x={-node.radius + 5} y={-node.radius + 5} width={(node.radius - 5) * 2} height={(node.radius - 5) * 2}>
                       <button
                         type="button"
-                        className={`atlas-node-item orbit-map__node-core${selected ? " is-active" : ""}`}
+                        className="orbit-map__node-core"
                         aria-label={`${TYPE_LABEL[node.type] || node.type}: ${node.title}, ${node.progress}% complete${node.ownerName ? `, owner ${node.ownerName}` : ""}`}
                         aria-pressed={selected}
                         onClick={() => onSelectRef(node.ref)}
