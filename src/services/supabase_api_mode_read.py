@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -19,6 +20,8 @@ from src.services.supabase_api_mode_transport import (
     SupabaseTransportError,
     _request_json_with_method,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _rest_rpc(function_name: str, args: dict[str, Any]) -> tuple[int, Any]:
@@ -314,14 +317,21 @@ def read_query_via_supabase_api(
         if status == 404 and (
             code in {"42883", "PGRST202"} or "does not exist" in detail
         ):
-            exc = ValueError(
-                f"Supabase API error (ritual.snapshot): function missing "
-                f"(SQLSTATE 42883): {detail}"
+            raise ValueError(
+                "Supabase API error (ritual.snapshot): function missing "
+                "(SQLSTATE 42883)"
             )
-            raise exc
-        raise ValueError(
-            f"Supabase API error (ritual.snapshot): HTTP {status}: {detail}"
+        # The upstream text is logged, not returned: the caller turns this message
+        # into an HTTP 400 detail, and read_query_helpers substring-matches it to
+        # decide on the fan-out fallback. Only the missing-function message above
+        # may contain "42883".
+        logger.warning(
+            "ritual.snapshot RPC failed: status=%s code=%s detail=%s",
+            status,
+            code,
+            detail,
         )
+        raise ValueError(f"Supabase API error (ritual.snapshot): HTTP {status}")
 
     _ = actor
     normalized = str(kind or "").strip()

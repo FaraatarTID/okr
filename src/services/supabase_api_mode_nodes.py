@@ -365,18 +365,15 @@ def create_task_via_supabase_api(
     }
     status, rows = _rest_insert("task", payload=payload)
     if status >= 400 or not rows:
-        error_detail = ""
-        if isinstance(rows, dict):
-            error_detail = (
-                f": {rows.get('message', rows.get('hint', rows.get('details', '')))}"
-            )
+        # The upstream message (constraint and column names, key values) goes to the
+        # log below, not into the exception: callers turn it into an HTTP detail.
         logger.error(
             "create_task failed: status=%s payload=%s response=%s",
             status,
             payload,
             rows,
         )
-        raise ValueError(f"Supabase API error (create_task): {status}{error_detail}")
+        raise ValueError(f"Supabase API error (create_task): {status}")
     row = rows[0]
     return types.SimpleNamespace(
         id=row.get("id"),

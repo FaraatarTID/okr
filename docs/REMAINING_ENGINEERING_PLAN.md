@@ -632,10 +632,43 @@ because `supabase_api_mode_transport.py` rewraps httpx errors as fixed text (`<K
 property of the transport, not of `ai_service.py`, so `tests/test_supabase_transport_error_text.py` pins it (5 tests;
 3 of 3 mutations killed) and fails if a change passes the library message or the URL through.
 
-Not covered: the 27 `HTTPException(detail=str(exc))` sites in `main_mutation_handlers.py` and
-`main_workflow_handlers.py` return the text of `PermissionError` and `ValueError`. Those are the application's own
-messages, and nothing checks that a `ValueError` from a library (for example a parse error that quotes its input) cannot
-reach them.
+The 27 `HTTPException(detail=str(exc))` sites in `main_mutation_handlers.py` and `main_workflow_handlers.py` return the
+text of `PermissionError` and `ValueError` (follow-up below).
+
+### Upstream error text in `ValueError` messages (2026-09-30)
+
+I read what the 27 try blocks call (about 45 functions in `src/crud*.py` and `src/services/supabase_api_mode*.py`) and
+searched those layers for `raise ValueError` / `PermissionError` that fold in text from another system. Most interpolate
+only the application's own values (`Goal {id} not found`). Five folded in the text of a PostgREST error body, which is
+Postgres text (constraint, table, column and key names):
+
+| Site | Where it surfaced |
+|---|---|
+| `create_task_via_supabase_api` (`error_detail`) | HTTP detail of the create-task route (via `str(exc)`) |
+| `update_cycle_via_supabase_api`, `cycle/activate_rpc` | HTTP detail of the update-cycle route |
+| `read_query_via_supabase_api`, `ritual.snapshot` HTTP error | HTTP 400 detail (`read_query_helpers`: `HTTPException(400, detail=str(exc))`) |
+| `create_weekly_plan_via_supabase_api` (`weekly_plan/upsert`) | HTTP detail of the weekly-plan route |
+| `create_cycle_via_supabase_api` (`cycle/create`, appended the whole response as `details=`) | HTTP detail of the create-cycle route |
+
+I reproduced the last one: a PostgREST 400 with `relation "internal_ritual_cache" does not exist in schema "private"`
+came back verbatim in the `ValueError`. The five now log the upstream text (`warning`/`error`, with status and code) and raise
+a fixed message with the status only. Operators still see the cause in the log; the client does not.
+
+**A bug found while doing this.** `read_query_helpers` chooses the fan-out fallback by looking for `42883` or
+`fn_ritual_snapshot` in the message. The old message appended the upstream text, so
+`permission denied for function fn_ritual_snapshot` (an authorization failure) contained that name and engaged the fallback,
+which `tests/test_ritual_snapshot_rpc.py` says must never happen for non-42883 errors. That test mocks the exception, so it did not
+exercise the real message builder. Only the missing-function message now contains `42883`. The fallback runs the sub-queries
+through the scope guard, so this was a wrong-path bug and not a data exposure.
+
+`tests/test_supabase_upstream_error_text.py`: 8 tests; each source file reverted to `origin/main` fails them, and 3 of 3 further
+mutations of the weekly-plan and cycle-create sites are killed. The five were found in this order: I read the first three, then
+ran an AST scan over all 129 `raise ValueError/PermissionError` in `supabase_api_mode*.py`, which listed the last two plus two
+that only interpolate a status or a table name (`node.get/{requested_table}` and `krs.needing_checkin/check_in`), left as they are.
+Not done: the AST scan looks at names inside the raise, so text folded in through a helper call would not show;
+the other layers (`src/crud*.py`) were read by grep, not each function; `crud_core_helpers.raise_backend_mutation_error_from_crud`
+still returns `payload["error"]` from a backend mutation response as the message, which is the application's own
+backend and was left as is.
 
 ## Verification drills
 

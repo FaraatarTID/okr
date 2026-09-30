@@ -457,12 +457,9 @@ def create_weekly_plan_via_supabase_api(
     else:
         status, rows = _rest_insert("weekly_plan", payload=payload)
     if status >= 400 or not rows:
-        detail = ""
-        if isinstance(rows, dict):
-            detail = rows.get("message", rows.get("hint", str(rows)))
-        raise ValueError(
-            f"Supabase API error (weekly_plan/upsert): {status} {detail}".strip()
-        )
+        # Upstream text is logged, not returned: it becomes an HTTP detail.
+        logger.error("weekly_plan/upsert failed: status=%s response=%s", status, rows)
+        raise ValueError(f"Supabase API error (weekly_plan/upsert): {status}")
     return types.SimpleNamespace(**rows[0])
 
 
@@ -669,9 +666,8 @@ def create_cycle_via_supabase_api(
         else []
     )
     if status >= 400 or not rows:
-        raise ValueError(
-            f"Supabase API error (cycle/create): {status} details={response}"
-        )
+        logger.error("cycle/create failed: status=%s response=%s", status, response)
+        raise ValueError(f"Supabase API error (cycle/create): {status}")
     return types.SimpleNamespace(**rows[0])
 
 
@@ -735,8 +731,15 @@ def update_cycle_via_supabase_api(
                     code in {"42883", "PGRST202"} or "does not exist" in detail
                 )
                 if not rpc_missing:
+                    # Upstream text is logged, not returned: it becomes an HTTP detail.
+                    logger.warning(
+                        "cycle/activate_rpc failed: status=%s code=%s detail=%s",
+                        status,
+                        code,
+                        detail,
+                    )
                     raise ValueError(
-                        f"Supabase API error (cycle/activate_rpc): {status} {detail}"
+                        f"Supabase API error (cycle/activate_rpc): {status}"
                     )
                 # RPC missing -> fall through to the legacy two-call path.
         except SupabaseTransportError:
