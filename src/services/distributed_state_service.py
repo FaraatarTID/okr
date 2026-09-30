@@ -8,6 +8,7 @@ import time
 from typing import Optional
 
 from src.services.backend_client import (
+    _base_url,
     _request_json,
     request_internal_cache_invalidation,
 )
@@ -87,6 +88,17 @@ def set_distributed_state(key: str, value: str, actor_username: str = "system") 
     except Exception as exc:
         _LOGGER.warning("Distributed state POST failed for '%s': %s", key, exc)
         return False
+
+
+def is_broadcast_configured() -> bool:
+    """Return True when a backend API URL exists to carry the invalidation signal.
+
+    Containers that do not set ``OKR_BACKEND_API_URL`` (the API and worker in the
+    shipped compose file) have nothing to broadcast to. That is a configuration
+    fact, not a failure, so callers should skip quietly instead of warning on every
+    write.
+    """
+    return bool(_base_url())
 
 
 def _next_invalidation_timestamp_ns() -> int:

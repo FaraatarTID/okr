@@ -24,7 +24,7 @@ Database
     (PgBouncer) without prepared-statement support works; see `src/db_url.py`.
   - PostgreSQL URLs must include a host.
 - Runtime DB URL strictness flags:
-  - `OKR_ALLOW_NON_SUPABASE_DB` (default: `1`)
+  - `OKR_ALLOW_NON_SUPABASE_DB` (code default: `1`; `deploy/docker/docker-compose.yml` passes `false` unless the variable is set)
     - `1`: relaxed compatibility mode (permits non-Supabase/non-pooler URLs; startup guards are softer).
     - `0`: strict Supabase validation mode (enforces pooler/role checks below).
   - `OKR_ALLOW_SUPABASE_SESSION_POOLER` (default: `0`)

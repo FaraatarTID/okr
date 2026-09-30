@@ -528,6 +528,12 @@ def get_session_context():
 def init_database():
     """Initialize the database - call this on app startup."""
     create_db_and_tables()
+    # Fail with one clear message when the live schema was not built by Alembic.
+    # Deliberately outside create_db_and_tables so it is not reported as a
+    # migration failure.
+    from src.schema_guard import verify_enum_labels
+
+    verify_enum_labels(get_engine())
 
 
 def _json_backup_encode_value(value):

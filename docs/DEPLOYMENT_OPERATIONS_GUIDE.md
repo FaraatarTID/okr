@@ -50,3 +50,33 @@ It does not remove unrelated services from the Compose project. Migration
 execution remains an explicit one-off operation (`uv run alembic upgrade head`)
 and production backup/restore evidence is maintained separately from disposable
 local verification.
+
+## Schema provenance
+
+The database schema must come from `alembic upgrade head`, never from hand-written
+SQL in a dashboard editor. A hand-built database drifts silently: the demo Supabase
+project once carried uppercase `userrole`/`taskstatus` labels, `varchar` columns where
+the migrations create enum types, and no `ux_cycle_owner_active` index, while
+`alembic_version` still claimed it was current. `OKR_DATA_ACCESS_MODE=database` then
+crashed at startup with `LookupError: 'ADMIN' is not among the defined enum values`.
+
+- Startup now runs `src/schema_guard.py` after the migrations. If a live PostgreSQL
+  enum lacks a label the models write, the backend refuses to start with one message
+  naming the enum, the labels present and the labels needed.
+- The fix is to rebuild on an empty schema, not to rename labels in place. Back up the
+  rows, drop the application tables and enum types, run `alembic upgrade head`, and
+  restore the rows with the lowercase labels.
+- The `backend_*` tables (nonce, rate limit, distributed state, idempotency) are not in
+  the migrations. `backend_app/security_state.py` creates them on first use with row
+  level security enabled and no `anon`/`authenticated` grants.
+- `supabase_api` mode writes uppercase role labels (`_role_for_storage`), so it does not
+  work against a schema built by the migrations. It is alpha/self-hosted compatibility
+  only; customer deployments use `database` mode.
+- `fn_activate_cycle` and `fn_ritual_snapshot` are Supabase RPC functions used only by
+  `supabase_api` mode. They are not part of the baseline migration, so a rebuilt schema
+  does not have them.
+- On the rebuilt demo database, tables created by the `okr_app` role carried no grants
+  for `anon`, `authenticated` or `service_role`, so PostgREST (and therefore
+  `supabase_api` mode) cannot read them. After any rebuild, run
+  `python scripts/check_rls_enabled.py` against the database to confirm row level
+  security is on and the PostgREST roles hold no grants.
