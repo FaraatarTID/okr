@@ -14,7 +14,6 @@ import importlib
 from typing import Any, Dict, Optional
 import bcrypt
 
-from src import crud_core_helpers
 from sqlalchemy import or_
 
 from src.domain.password_policy import is_production_runtime, validate_password_policy
@@ -364,30 +363,9 @@ def create_user_from_crud(
     if not isinstance(role, crud_module.UserRole):
         role = crud_module.UserRole(str(role))
 
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_user",
-        backend_kwargs={
-            "username": username,
-            "password": password,
-            "role": role,
-            "display_name": display_name,
-            "manager_id": manager_id,
-            "team_id": team_id,
-            "must_change_password": must_change_password,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="namespace",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         if actor_username:
             crud_module._require_admin_actor(session, actor_username)
-        elif crud_module._backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
 
         enforce_manager_chain = bool(actor_username)
         manager_user = None
@@ -866,29 +844,9 @@ def update_user_from_crud(
     is_active: bool | None = None,
     actor_username: Optional[str] = None,
 ):
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="update_user",
-        backend_kwargs={
-            "user_id": user_id,
-            "display_name": display_name,
-            "role": role,
-            "manager_id": manager_id,
-            "team_id": team_id,
-            "is_active": is_active,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="namespace",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         if actor_username:
             crud_module._require_admin_actor(session, actor_username)
-        elif crud_module._backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
 
         user = session.get(crud_module.User, user_id)
         if not user:
@@ -950,21 +908,6 @@ def reset_user_password_from_crud(
 ) -> bool:
     validate_password_policy(new_password)
 
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="reset_user_password",
-        backend_kwargs={
-            "user_id": user_id,
-            "new_password": new_password,
-            "require_change": require_change,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="bool_reset",
-    )
-    if result is not None:
-        return result
-
     username = None
     try:
         with crud_module.get_session_context() as session:
@@ -974,8 +917,6 @@ def reset_user_password_from_crud(
                     actor_username=actor_username,
                     target_user_id=int(user_id),
                 )
-            elif crud_module._backend_mutation_proxy_enabled():
-                raise PermissionError("Actor username is required for this operation")
 
             user = session.get(crud_module.User, user_id)
             if not user:

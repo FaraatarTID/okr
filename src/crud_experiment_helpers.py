@@ -6,7 +6,6 @@ from typing import Optional
 
 from sqlmodel import col
 
-from src import crud_core_helpers
 from src.utils.date_validation import validate_start_before_end
 
 
@@ -71,25 +70,6 @@ def create_experiment_from_crud(
     expected_effect_direction=None,
     expected_effect_size: Optional[float] = None,
 ):
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_experiment",
-        backend_kwargs={
-            "key_result_id": key_result_id,
-            "cycle_id": cycle_id,
-            "hypothesis": hypothesis,
-            "change_description": change_description,
-            "start_at": start_at,
-            "expected_effect_direction": expected_effect_direction,
-            "expected_effect_size": expected_effect_size,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         goal = crud_module._authorize_node_mutation(
             session,
@@ -186,20 +166,6 @@ def update_experiment_from_crud(
     updates,
 ):
     updates = dict(updates or {})
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="update_experiment",
-        backend_kwargs={
-            "experiment_id": experiment_id,
-            "updates": updates,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         experiment = session.get(crud_module.Experiment, experiment_id)
         if not experiment:
@@ -294,21 +260,6 @@ def close_experiment_from_crud(
     rationale: str,
     actor_username: str,
 ):
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="close_experiment",
-        backend_kwargs={
-            "experiment_id": experiment_id,
-            "decision": decision,
-            "rationale": rationale,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         experiment = session.get(crud_module.Experiment, int(experiment_id))
         if not experiment:

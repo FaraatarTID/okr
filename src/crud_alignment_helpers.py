@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from src import crud_core_helpers
-
 
 _VALID_LINKED_ENTITY_TYPES = {"goal", "key_result"}
 _VALID_DIRECTIONS = {"parent", "child"}
@@ -67,21 +65,6 @@ def create_alignment_from_crud(
                         node_id=parent_id,
                         actor_username=actor_username,
                     )
-
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_alignment",
-        backend_kwargs={
-            "parent_id": parent_id,
-            "child_id": child_id,
-            "alignment_type": alignment_type,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
 
     from src.domain.alignment import check_for_cycle
 
@@ -174,17 +157,6 @@ def delete_alignment_from_crud(
     edge_id: int,
     actor_username: Optional[str] = None,
 ) -> bool:
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="delete_alignment",
-        backend_kwargs={"alignment_id": edge_id},
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="bool_deleted",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         edge = session.get(crud_module.AlignmentEdge, edge_id)
         if edge:

@@ -17,92 +17,6 @@ from src import crud_auth_helpers
 from src import crud_core_helpers
 
 
-def backend_mutation_proxy_enabled_from_crud(*, crud_module) -> bool:
-    return crud_core_helpers.backend_mutation_proxy_enabled_from_crud(
-        crud_module=crud_module
-    )
-
-
-def backend_read_proxy_enabled_from_crud(*, crud_module) -> bool:
-    return backend_mutation_proxy_enabled_from_crud(crud_module=crud_module)
-
-
-def resolve_backend_actor_from_crud(
-    *, crud_module, actor_username: Optional[str] = None
-) -> str:
-    from src.services import backend_client
-
-    return str(
-        backend_client.resolve_actor_username(actor_username=actor_username)
-    ).strip()
-
-
-def raise_backend_read_error_from_crud(
-    *, crud_module, operation: str, payload: Dict[str, Any]
-) -> None:
-    message = str(
-        payload.get("error") or f"Backend read failed for {operation}."
-    ).strip()
-    try:
-        code = int(payload.get("status_code") or 0)
-    except Exception:
-        code = 0
-    if code in {401, 403}:
-        raise PermissionError(message)
-    if code == 404:
-        raise ValueError(message or "Not found.")
-    raise ValueError(message)
-
-
-def backend_read_result_or_raise_from_crud(*, crud_module, operation: str, result):
-    if isinstance(result, dict) and "error" in result:
-        raise_backend_read_error_from_crud(
-            crud_module=crud_module, operation=operation, payload=result
-        )
-    return result
-
-
-def local_backend_fallback_allowed_from_crud(*, crud_module) -> bool:
-    return crud_core_helpers.local_backend_fallback_allowed_from_crud(
-        crud_module=crud_module
-    )
-
-
-def is_transient_backend_mutation_error_from_crud(
-    *, crud_module, payload: Dict[str, Any]
-) -> bool:
-    return crud_core_helpers.is_transient_backend_mutation_error_from_crud(
-        crud_module=crud_module,
-        payload=payload,
-    )
-
-
-def raise_backend_mutation_error_from_crud(
-    *, crud_module, payload: Dict[str, Any]
-) -> None:
-    return crud_core_helpers.raise_backend_mutation_error_from_crud(
-        crud_module=crud_module,
-        payload=payload,
-    )
-
-
-def enforce_backend_mutation_failure_policy_from_crud(
-    *, crud_module, payload: Dict[str, Any]
-) -> None:
-    return crud_core_helpers.enforce_backend_mutation_failure_policy_from_crud(
-        crud_module=crud_module,
-        payload=payload,
-    )
-
-
-def node_from_backend_payload_from_crud(
-    *, crud_module: Optional[Any] = None, payload: Dict[str, Any], **_ignored
-):
-    return crud_core_helpers.node_from_backend_payload_from_crud(
-        payload=payload, crud_module=crud_module
-    )
-
-
 def validate_update_fields_from_crud(
     *,
     entity_name: str,
@@ -420,24 +334,6 @@ def authenticate_user_without_throttle_from_crud(
 def authenticate_user_detailed_from_crud(
     *, crud_module, username: str, password: str, client_ip: Optional[str] = None
 ) -> Dict[str, Any]:
-    if backend_read_proxy_enabled_from_crud(crud_module=crud_module):
-        from src.services import backend_client
-
-        backend_result = backend_client.authenticate_user_detailed(
-            str(username or "").strip(),
-            password,
-            client_ip=client_ip,
-        )
-        backend_result = backend_read_result_or_raise_from_crud(
-            crud_module=crud_module,
-            operation="authenticate_user_detailed",
-            result=backend_result,
-        )
-        if isinstance(backend_result, dict):
-            user_payload = backend_result.get("user")
-            if user_payload and not isinstance(user_payload, dict):
-                backend_result["user"] = user_payload
-            return backend_result
     return crud_auth_helpers.authenticate_user_detailed_from_crud(
         crud_module=crud_module,
         username=username,
@@ -450,14 +346,6 @@ def authenticate_user_from_crud(
     *, crud_module, username: str, password: str, client_ip: Optional[str] = None
 ):
     """Authenticate a user and return the User object if successful."""
-    if backend_read_proxy_enabled_from_crud(crud_module=crud_module):
-        auth = authenticate_user_detailed_from_crud(
-            crud_module=crud_module,
-            username=username,
-            password=password,
-            client_ip=client_ip,
-        )
-        return auth.get("user") if isinstance(auth, dict) else None
     return crud_auth_helpers.authenticate_user_from_crud(
         crud_module=crud_module,
         username=username,

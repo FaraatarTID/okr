@@ -134,8 +134,6 @@ EXPECTED_EXPORTS: dict[str, list[str]] = {
         "_authorize_node_scoped_access",
     ],
     "src.crud_runtime_helpers": [
-        "_backend_mutation_proxy_enabled",
-        "_backend_read_proxy_enabled",
         "hash_password",
         "verify_password",
         "get_user_by_username",

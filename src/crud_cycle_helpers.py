@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from src import crud_core_helpers
-
 
 def _require_cycle_governance_actor(
     *, crud_module, session, actor_username: Optional[str]
@@ -65,17 +63,6 @@ def create_cycle_from_crud(
     owner_manager_id: Optional[int] = None,
     actor_username: Optional[str] = None,
 ):
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_cycle",
-        backend_kwargs={"title": title, "start_date": start_date, "end_date": end_date},
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     if start_date >= end_date:
         raise ValueError("Cycle start_date must be before end_date.")
 
@@ -87,8 +74,6 @@ def create_cycle_from_crud(
                 session=session,
                 actor_username=actor_username,
             )
-        elif crud_module._backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
 
         resolved_owner_manager_id = _validate_cycle_owner(
             crud_module=crud_module,
@@ -161,23 +146,6 @@ def update_cycle_from_crud(
     owner_manager_id: Optional[int] = None,
     actor_username: Optional[str] = None,
 ):
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="update_cycle",
-        backend_kwargs={
-            "cycle_id": cycle_id,
-            "title": title,
-            "start_date": start_date,
-            "end_date": end_date,
-            "is_active": is_active,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     if start_date >= end_date:
         raise ValueError("Cycle start_date must be before end_date.")
 
@@ -189,8 +157,6 @@ def update_cycle_from_crud(
                 session=session,
                 actor_username=actor_username,
             )
-        elif crud_module._backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
 
         cycle = session.get(crud_module.Cycle, cycle_id)
         if not cycle:
@@ -269,17 +235,6 @@ def delete_cycle_from_crud(
     cycle_id: int,
     actor_username: Optional[str] = None,
 ) -> bool:
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="delete_cycle",
-        backend_kwargs={"cycle_id": cycle_id},
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="bool_deleted",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         actor = None
         if actor_username:
@@ -288,8 +243,6 @@ def delete_cycle_from_crud(
                 session=session,
                 actor_username=actor_username,
             )
-        elif crud_module._backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
 
         cycle = session.get(crud_module.Cycle, cycle_id)
         if not cycle:

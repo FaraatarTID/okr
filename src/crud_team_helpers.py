@@ -6,8 +6,6 @@ from typing import Optional
 
 from sqlalchemy.exc import IntegrityError
 
-from src import crud_core_helpers
-
 
 def create_team_from_crud(
     *,
@@ -16,25 +14,12 @@ def create_team_from_crud(
     description: Optional[str] = None,
     actor_username: Optional[str] = None,
 ):
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_team",
-        backend_kwargs={"name": name, "description": description},
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     if not str(name or "").strip():
         raise ValueError("Team name is required.")
 
     with crud_module.get_session_context() as session:
         if actor_username:
             crud_module._require_admin_actor(session, actor_username)
-        elif crud_module._backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
 
         team = crud_module.Team(name=name, description=description)
         session.add(team)
@@ -71,26 +56,9 @@ def update_team_from_crud(
     updates=None,
 ):
     updates = dict(updates or {})
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="update_team",
-        backend_kwargs={
-            "team_id": team_id,
-            "name": updates.get("name"),
-            "description": updates.get("description"),
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         if actor_username:
             crud_module._require_admin_actor(session, actor_username)
-        elif crud_module._backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
 
         team = session.get(crud_module.Team, team_id)
         if not team:
@@ -122,22 +90,9 @@ def delete_team_from_crud(
     team_id: int,
     actor_username: Optional[str] = None,
 ) -> bool:
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="delete_team",
-        backend_kwargs={"team_id": team_id},
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="bool_deleted",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         if actor_username:
             crud_module._require_admin_actor(session, actor_username)
-        elif crud_module._backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
 
         team = session.get(crud_module.Team, team_id)
         if not team:

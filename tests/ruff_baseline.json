@@ -148,7 +148,7 @@
       "BLE001": 1
     },
     "src/crud_core_helpers.py": {
-      "BLE001": 4
+      "BLE001": 1
     },
     "src/crud_data_helpers.py": {
       "BLE001": 2
@@ -159,9 +159,6 @@
     "src/database.py": {
       "BLE001": 3,
       "S105": 1
-    },
-    "src/domain/auth_service.py": {
-      "BLE001": 1
     },
     "src/domain/crud_contracts.py": {
       "S105": 1
@@ -183,17 +180,6 @@
     },
     "src/services/ai_service.py": {
       "BLE001": 9
-    },
-    "src/services/backend_client.py": {
-      "BLE001": 5,
-      "S112": 1
-    },
-    "src/services/backend_launcher.py": {
-      "BLE001": 3,
-      "S603": 2
-    },
-    "src/services/distributed_state_service.py": {
-      "BLE001": 2
     },
     "src/services/pdf_service.py": {
       "BLE001": 5,
