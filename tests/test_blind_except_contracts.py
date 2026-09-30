@@ -6,9 +6,6 @@ widening one changes a test, not only a `noqa` comment.
 
 from __future__ import annotations
 
-import sys
-import types
-
 import pytest
 
 import backend_app.worker as worker
@@ -140,55 +137,11 @@ def test_database_store_decodes_a_json_response(tmp_path):
         store.dispose()
 
 
-# --- security state: Redis handlers (fail closed, never raise) ------------------------------
-
-
-class _BrokenClient:
-    def ping(self):
-        return True
-
-    def get(self, *_a, **_k):
-        raise RuntimeError("redis unavailable")
-
-    def ttl(self, *_a, **_k):
-        raise RuntimeError("redis unavailable")
-
-    def set(self, *_a, **_k):
-        raise RuntimeError("redis unavailable")
-
-    def close(self):
-        raise RuntimeError("close failed")
-
-
-def _redis_store(monkeypatch, client):
-    monkeypatch.setitem(
-        sys.modules,
-        "redis",
-        types.SimpleNamespace(
-            Redis=types.SimpleNamespace(from_url=lambda *_a, **_k: client)
-        ),
-    )
-    return security_state.RedisSecurityStateStore(redis_url="redis://fake:6379/0")
-
-
-def test_redis_load_returns_none_when_redis_fails(monkeypatch):
-    store = _redis_store(monkeypatch, _BrokenClient())
-    assert store.load_idempotent_response(scope=SCOPE, actor=ACTOR, key=KEY) is None
-
-
-def test_redis_store_does_not_raise_when_redis_fails(monkeypatch):
-    class Half(_BrokenClient):
-        def get(self, *_a, **_k):
-            return b'{"ph": "h"}'
-
-    store = _redis_store(monkeypatch, Half())
-    store.store_idempotent_response(
-        scope=SCOPE, actor=ACTOR, key=KEY, response_json='{"a": 1}'
-    )
+# --- security state: idempotency caller contract ---------------------------------------------
 
 
 def test_a_failed_idempotent_load_makes_the_caller_answer_409(monkeypatch):
-    """The reason the Redis swallow is safe: the caller never replays a wrong response."""
+    """The reason a swallowed idempotency-load failure is safe: the caller never replays a wrong response."""
     from fastapi import HTTPException
 
     from backend_app import main_helpers
@@ -200,8 +153,3 @@ def test_a_failed_idempotent_load_makes_the_caller_answer_409(monkeypatch):
             scope=SCOPE, actor=ACTOR, idempotency_key="k1", payload={"a": 1}
         )
     assert caught.value.status_code == 409
-
-
-def test_dispose_swallows_client_close_errors(monkeypatch):
-    store = _redis_store(monkeypatch, _BrokenClient())
-    store.dispose()

@@ -28,7 +28,6 @@ class RuntimeScenario:
     pdf_method: str = "chromium"
     pdfshift_api_key: str = ""
     backend_security_state_backend: str = "database"
-    backend_security_state_redis_url: str = ""
     backend_bind_address: str = "127.0.0.1"
 
 
@@ -38,11 +37,6 @@ SCENARIOS = (
         name="database_pdfshift",
         pdf_method="pdfshift",
         pdfshift_api_key="runtime_smoke_pdfshift_key_please_replace",
-    ),
-    RuntimeScenario(
-        name="redis_backend",
-        backend_security_state_backend="redis",
-        backend_security_state_redis_url="redis://redis.internal:6379/0",
     ),
 )
 
@@ -62,7 +56,6 @@ def _build_env_lines(scenario: RuntimeScenario) -> list[str]:
         "OKR_BACKEND_PROXY_MUTATIONS=true",
         "OKR_BACKEND_PROXY_READS=true",
         f"OKR_BACKEND_SECURITY_STATE_BACKEND={scenario.backend_security_state_backend}",
-        f"OKR_BACKEND_SECURITY_STATE_REDIS_URL={scenario.backend_security_state_redis_url}",
         f"OKR_BACKEND_BIND_ADDRESS={scenario.backend_bind_address}",
         "OKR_ALLOW_LOCAL_MUTATION_FALLBACK=false",
         "OKR_ALLOW_LOCAL_READ_FALLBACK=false",

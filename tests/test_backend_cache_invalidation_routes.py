@@ -83,21 +83,6 @@ def test_database_app_state_read_failure_preserves_generic_none_and_strict_error
         store.get_app_state_strict("cache-test")
 
 
-def test_redis_app_state_read_failure_preserves_generic_none_and_strict_error():
-    import backend_app.security_state as security_state
-
-    class UnavailableRedis:
-        def get(self, _key):
-            raise OSError("redis unavailable")
-
-    store = object.__new__(security_state.RedisSecurityStateStore)
-    store._key_prefix = "test"
-    store._client = UnavailableRedis()
-    assert store.get_app_state("cache-test") is None
-    with pytest.raises(security_state.SecurityStateUnavailableError):
-        store.get_app_state_strict("cache-test")
-
-
 def test_database_app_state_write_failure_is_typed_unavailable(tmp_path, monkeypatch):
     import backend_app.security_state as security_state
     from sqlalchemy.exc import OperationalError
@@ -115,31 +100,13 @@ def test_database_app_state_write_failure_is_typed_unavailable(tmp_path, monkeyp
         store.set_app_state("cache-test", "1729")
 
 
-def test_redis_app_state_write_failure_is_typed_unavailable():
-    import backend_app.security_state as security_state
-
-    class UnavailableRedis:
-        def set(self, _key, _value):
-            raise OSError("redis unavailable")
-
-    store = object.__new__(security_state.RedisSecurityStateStore)
-    store._key_prefix = "test"
-    store._client = UnavailableRedis()
-    with pytest.raises(security_state.SecurityStateUnavailableError):
-        store.set_app_state("cache-test", "1729")
-
-
-@pytest.mark.parametrize("backend", ["database", "redis"])
-def test_strict_shared_state_rejects_dev_factory_memory_fallback(
-    client, monkeypatch, backend
-):
+def test_strict_shared_state_rejects_dev_factory_memory_fallback(client, monkeypatch):
     import backend_app.security_state as security_state
 
     monkeypatch.setenv("OKR_ENV", "development")
-    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", backend)
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
     monkeypatch.setenv("OKR_DATABASE_URL", "")
     monkeypatch.setenv("DATABASE_URL", "")
-    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_REDIS_URL", "")
     assert isinstance(
         security_state._get_store(), security_state.InMemorySecurityStateStore
     )
@@ -147,36 +114,25 @@ def test_strict_shared_state_rejects_dev_factory_memory_fallback(
         security_state.get_shared_app_state("cache-test")
 
 
-@pytest.mark.parametrize("backend", ["database", "redis"])
 def test_generic_production_read_outage_does_not_fallback_to_memory(
-    monkeypatch, tmp_path, backend
+    monkeypatch, tmp_path
 ):
     import backend_app.security_state as security_state
     from sqlalchemy.exc import OperationalError
 
-    if backend == "database":
-        store = build_database_store(
-            database_url=f"sqlite:///{tmp_path / 'generic-read.db'}"
-        )
-        store._ensure_schema()
+    store = build_database_store(
+        database_url=f"sqlite:///{tmp_path / 'generic-read.db'}"
+    )
+    store._ensure_schema()
 
-        def unavailable_read():
-            raise OperationalError("connect", {}, RuntimeError("database unavailable"))
+    def unavailable_read():
+        raise OperationalError("connect", {}, RuntimeError("database unavailable"))
 
-        monkeypatch.setattr(store._engine, "connect", unavailable_read)
-    else:
-
-        class UnavailableRedis:
-            def get(self, _key):
-                raise OSError("redis unavailable")
-
-        store = object.__new__(security_state.RedisSecurityStateStore)
-        store._key_prefix = "test-generic"
-        store._client = UnavailableRedis()
+    monkeypatch.setattr(store._engine, "connect", unavailable_read)
 
     fallbacks = []
     monkeypatch.setenv("OKR_ENV", "production")
-    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", backend)
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
     monkeypatch.setattr(security_state, "_get_store", lambda: store)
     monkeypatch.setattr(
         security_state,

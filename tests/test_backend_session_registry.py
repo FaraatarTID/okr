@@ -687,14 +687,13 @@ def test_postgres_registry_cleanup_is_bounded_and_preserves_expiry_equality():
         store.dispose()
 
 
-@pytest.mark.parametrize("backend", ["database", "redis"])
-def test_configured_durable_registry_does_not_fall_back_to_memory(monkeypatch, backend):
+def test_configured_durable_registry_does_not_fall_back_to_memory(monkeypatch):
     import types
 
     monkeypatch.setattr(
         security_state,
         "get_backend_settings",
-        lambda: types.SimpleNamespace(security_state_backend=backend),
+        lambda: types.SimpleNamespace(security_state_backend="database"),
     )
     monkeypatch.setattr(
         security_state, "_get_store", lambda: security_state._memory_store
@@ -706,185 +705,6 @@ def test_configured_durable_registry_does_not_fall_back_to_memory(monkeypatch, b
             actor_id="user-1",
             expires_at=datetime(2030, 1, 1, tzinfo=timezone.utc),
         )
-
-
-def test_redis_registry_atomic_contract_when_redis_configured(monkeypatch):
-    import json
-    import os
-    import uuid
-
-    redis_url = os.getenv("OKR_TEST_REDIS_URL", "").strip()
-    if not redis_url:
-        pytest.skip("OKR_TEST_REDIS_URL is not configured")
-    prefix = f"t23-test-{uuid.uuid4().hex}"
-    store = security_state.RedisSecurityStateStore(
-        redis_url=redis_url, key_prefix=prefix
-    )
-    digest = "a" * 64
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-    try:
-        store.register_session(
-            session_digest=digest, actor_id="user-1", expires_at=expires_at
-        )
-        reserved_key = f"session-registry:{digest}"
-        with pytest.raises(ValueError, match="reserved"):
-            store.get_app_state(reserved_key)
-        with pytest.raises(ValueError, match="reserved"):
-            store.set_app_state(reserved_key, "overwritten")
-        store.register_session(
-            session_digest=digest, actor_id="user-1", expires_at=expires_at
-        )
-        assert (
-            store.check_session(
-                session_digest=digest,
-                actor_id="user-1",
-                now=expires_at,
-            )
-            == "active"
-        )
-        assert (
-            store.check_session(
-                session_digest=digest,
-                actor_id="user-2",
-                now=expires_at,
-            )
-            == "unknown"
-        )
-        with pytest.raises(security_state.SessionRegistrationConflictError):
-            store.register_session(
-                session_digest=digest,
-                actor_id="user-2",
-                expires_at=expires_at,
-            )
-        with pytest.raises(security_state.SessionRegistrationConflictError):
-            store.register_session(
-                session_digest=digest,
-                actor_id="user-1",
-                expires_at=expires_at + timedelta(seconds=1),
-            )
-        assert store.revoke_session(session_digest=digest, now=expires_at) == "revoked"
-        assert (
-            store.check_session(
-                session_digest=digest,
-                actor_id="user-1",
-                now=expires_at,
-            )
-            == "revoked"
-        )
-        assert (
-            store.check_session(
-                session_digest=digest,
-                actor_id="user-1",
-                now=expires_at + timedelta(microseconds=1),
-            )
-            == "unknown"
-        )
-        malformed_digest = "b" * 64
-        store._client.set(store._session_key(malformed_digest), "{")
-        with pytest.raises(security_state.SecurityStateUnavailableError):
-            store.check_session(
-                session_digest=malformed_digest,
-                actor_id="user-1",
-                now=expires_at,
-            )
-        malformed_expiry_digest = "c" * 64
-        store._client.set(
-            store._session_key(malformed_expiry_digest),
-            '{"actor_id":"user-1","expires_at":"invalid","status":"active"}',
-        )
-        with pytest.raises(security_state.SecurityStateUnavailableError):
-            store.check_session(
-                session_digest=malformed_expiry_digest,
-                actor_id="user-1",
-                now=expires_at,
-            )
-        malformed_actor_digest = "e" * 64
-        store._client.set(
-            store._session_key(malformed_actor_digest),
-            json.dumps(
-                {
-                    "actor_id": "",
-                    "expires_at": security_state._session_epoch_microseconds(
-                        expires_at
-                    ),
-                    "status": "active",
-                }
-            ),
-        )
-        with pytest.raises(security_state.SecurityStateUnavailableError):
-            store.check_session(
-                session_digest=malformed_actor_digest,
-                actor_id="user-1",
-                now=expires_at,
-            )
-        out_of_range_digest = "d" * 64
-        store._client.set(
-            store._session_key(out_of_range_digest),
-            '{"actor_id":"user-1","expires_at":"99999999999999999999",'
-            '"status":"active"}',
-        )
-        with pytest.raises(security_state.SecurityStateUnavailableError):
-            store.check_session(
-                session_digest=out_of_range_digest,
-                actor_id="user-1",
-                now=expires_at,
-            )
-
-        monkeypatch.setattr(
-            store._client,
-            "eval",
-            lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                RuntimeError("redis unavailable")
-            ),
-        )
-        with pytest.raises(security_state.SecurityStateUnavailableError):
-            store.revoke_session(session_digest="c" * 64, now=expires_at)
-    finally:
-        store._client.delete(
-            store._session_key(digest),
-            store._session_key("b" * 64),
-            store._session_key("c" * 64),
-            store._session_key("d" * 64),
-            store._session_key("e" * 64),
-        )
-        store.dispose()
-
-
-def test_redis_session_key_expires_after_last_acceptable_microsecond():
-    import os
-    import time
-    import uuid
-
-    redis_url = os.getenv("OKR_TEST_REDIS_URL", "").strip()
-    if not redis_url:
-        pytest.skip("OKR_TEST_REDIS_URL is not configured")
-    store = security_state.RedisSecurityStateStore(
-        redis_url=redis_url, key_prefix=f"t23-expiry-{uuid.uuid4().hex}"
-    )
-    digest = "9" * 64
-    now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(milliseconds=500)
-    key = store._session_key(digest)
-    try:
-        store.register_session(
-            session_digest=digest, actor_id="expiry-actor", expires_at=expires_at
-        )
-        assert store._client.pttl(key) > 0
-        assert store.revoke_session(session_digest=digest, now=now) == "revoked"
-        assert store._client.pttl(key) > 0
-        assert (
-            store.check_session(
-                session_digest=digest,
-                actor_id="expiry-actor",
-                now=expires_at,
-            )
-            == "revoked"
-        )
-        time.sleep(0.75)
-        assert store._client.get(key) is None
-    finally:
-        store._client.delete(key)
-        store.dispose()
 
 
 def test_database_registry_uses_atomic_shared_operations_when_postgres_configured():

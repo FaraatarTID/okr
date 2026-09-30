@@ -66,6 +66,34 @@ def _as_choice(raw: str | None, *, default: str, allowed: set[str]) -> str:
     return value
 
 
+_SECURITY_STATE_BACKENDS = {"memory", "database"}
+
+
+def _as_security_state_backend(raw: str | None, *, default: str) -> str:
+    """Parse OKR_BACKEND_SECURITY_STATE_BACKEND, rejecting unsupported values.
+
+    Unlike the other choice settings this does not fall back to the default on an
+    unknown value: the former ``redis`` option was removed, and a deployment that
+    still sets it must stop instead of silently running on another backend.
+    """
+    value = str(raw).strip().lower() if raw is not None else ""
+    if not value:
+        return str(default).strip().lower()
+    if value == "redis":
+        raise RuntimeError(
+            "OKR_BACKEND_SECURITY_STATE_BACKEND=redis is no longer supported; the "
+            "Redis security-state backend was removed. Use "
+            "OKR_BACKEND_SECURITY_STATE_BACKEND=database (or memory outside "
+            "production) and drop the OKR_BACKEND_SECURITY_STATE_REDIS_* variables."
+        )
+    if value not in _SECURITY_STATE_BACKENDS:
+        raise RuntimeError(
+            f"OKR_BACKEND_SECURITY_STATE_BACKEND={value!r} is not supported; "
+            "use database (or memory outside production)."
+        )
+    return value
+
+
 @dataclass(frozen=True)
 class BackendSettings:
     runtime_env: str
@@ -83,8 +111,6 @@ class BackendSettings:
     preauth_rate_limit_max_requests: int
     security_state_backend: str
     security_state_cleanup_seconds: int
-    security_state_redis_url: str
-    security_state_redis_prefix: str
     job_user_window_seconds: int
     job_user_max_requests: int
     job_user_daily_max_requests: int
@@ -175,26 +201,14 @@ def get_backend_settings() -> BackendSettings:
             default=60000,
             minimum=1,
         ),
-        security_state_backend=_as_choice(
+        security_state_backend=_as_security_state_backend(
             get_config_value("OKR_BACKEND_SECURITY_STATE_BACKEND", ""),
             default=security_state_backend_default,
-            allowed={"memory", "database", "redis"},
         ),
         security_state_cleanup_seconds=_as_int(
             get_config_value("OKR_BACKEND_SECURITY_STATE_CLEANUP_SECONDS", ""),
             default=60,
             minimum=1,
-        ),
-        security_state_redis_url=str(
-            get_config_value("OKR_BACKEND_SECURITY_STATE_REDIS_URL", "")
-        ).strip(),
-        security_state_redis_prefix=(
-            str(
-                get_config_value(
-                    "OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX", "okr:security"
-                )
-            ).strip()
-            or "okr:security"
         ),
         security_state_db_use_null_pool=_as_bool(
             get_config_value("OKR_BACKEND_SECURITY_STATE_DB_USE_NULL_POOL", ""),
@@ -369,18 +383,9 @@ def validate_production_settings(settings: BackendSettings) -> None:
         )
 
     security_state_backend = str(settings.security_state_backend or "").strip().lower()
-    if security_state_backend == "memory":
+    if security_state_backend != "database":
         errors.append(
-            "Production requires OKR_BACKEND_SECURITY_STATE_BACKEND to be database or redis."
-        )
-    elif security_state_backend not in {"database", "redis"}:
-        errors.append(
-            "Production requires OKR_BACKEND_SECURITY_STATE_BACKEND to be database or redis."
-        )
-    elif security_state_backend == "redis" and not settings.security_state_redis_url:
-        errors.append(
-            "Production with OKR_BACKEND_SECURITY_STATE_BACKEND=redis requires "
-            "OKR_BACKEND_SECURITY_STATE_REDIS_URL."
+            "Production requires OKR_BACKEND_SECURITY_STATE_BACKEND=database."
         )
 
     database_url = str(os.getenv("OKR_DATABASE_URL", "")).strip()

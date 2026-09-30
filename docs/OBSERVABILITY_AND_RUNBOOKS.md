@@ -14,7 +14,7 @@ Related runbook and ops docs:
 
 - Signals covered: API health, BFF boundary health, worker/job health, DB/migration health, authentication/rate-limits, and audit integrity.
 - Evidence format: each signal includes status meaning, alert policy, and response action.
-- Primary runtime context: `backend-api`, `backend-worker`, `spa-bff`, `spa-web`, PostgreSQL, Redis (if enabled), and orchestrator events.
+- Primary runtime context: `backend-api`, `backend-worker`, `spa-bff`, `spa-web`, PostgreSQL, and orchestrator events.
 
 ## Dashboard definitions (first-class set)
 

@@ -123,3 +123,38 @@ def test_production_validation_uses_node_env_alias(monkeypatch) -> None:
 
     assert settings.runtime_env == "production"
     assert settings.enforce_request_signing
+
+
+@pytest.mark.parametrize("runtime_env", ["production", "development"])
+def test_redis_security_state_backend_is_rejected_loudly(
+    monkeypatch, runtime_env: str
+) -> None:
+    if runtime_env == "production":
+        _set_production_env(monkeypatch)
+    else:
+        monkeypatch.setenv("OKR_RUNTIME_ENV", "development")
+        monkeypatch.setenv("OKR_ENV", "development")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "redis")
+
+    with pytest.raises(RuntimeError, match="no longer supported") as exc:
+        backend_config.get_backend_settings()
+    assert "OKR_BACKEND_SECURITY_STATE_BACKEND=redis" in str(exc.value)
+    assert "database" in str(exc.value)
+
+
+def test_unknown_security_state_backend_is_rejected_not_defaulted(monkeypatch) -> None:
+    monkeypatch.setenv("OKR_RUNTIME_ENV", "development")
+    monkeypatch.setenv("OKR_ENV", "development")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "etcd")
+
+    with pytest.raises(RuntimeError, match="not supported"):
+        backend_config.get_backend_settings()
+
+
+@pytest.mark.parametrize("value", ["database", "memory"])
+def test_supported_security_state_backends_are_accepted(monkeypatch, value) -> None:
+    monkeypatch.setenv("OKR_RUNTIME_ENV", "development")
+    monkeypatch.setenv("OKR_ENV", "development")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", value)
+
+    assert backend_config.get_backend_settings().security_state_backend == value

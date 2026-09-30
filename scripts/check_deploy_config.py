@@ -60,7 +60,7 @@ SECURE_EXPECTED = {
     "OKR_STRICT_RUNTIME_PREFLIGHT": "true",
 }
 
-ALLOWED_SECURITY_STATE_BACKENDS = {"database", "redis"}
+ALLOWED_SECURITY_STATE_BACKENDS = {"database"}
 ALLOWED_PDF_METHODS = {"pdfshift", "chromium"}
 
 PLACEHOLDER_TOKENS = (
@@ -179,34 +179,6 @@ def _validate_database_url(url: str, report: ValidationReport, *, strict: bool) 
     if ".pooler.supabase.com" not in raw or ":6543" not in raw:
         report.warnings.append(
             "OKR_DATABASE_URL is not using the expected Supabase transaction pooler (:6543)."
-        )
-
-
-def _validate_redis_url(url: str, report: ValidationReport, *, strict: bool) -> None:
-    raw = str(url or "").strip()
-    if not raw:
-        report.errors.append(
-            "OKR_BACKEND_SECURITY_STATE_REDIS_URL is required when "
-            "OKR_BACKEND_SECURITY_STATE_BACKEND=redis."
-        )
-        return
-
-    if not raw.startswith(("redis://", "rediss://")):
-        report.errors.append(
-            "OKR_BACKEND_SECURITY_STATE_REDIS_URL must start with 'redis://' or 'rediss://'."
-        )
-        return
-
-    parsed = urlparse(raw)
-    if not parsed.hostname:
-        report.errors.append(
-            "OKR_BACKEND_SECURITY_STATE_REDIS_URL must include a Redis host."
-        )
-        return
-
-    if strict and _looks_placeholder(raw):
-        report.errors.append(
-            "OKR_BACKEND_SECURITY_STATE_REDIS_URL appears to be a placeholder in runtime mode."
         )
 
 
@@ -372,13 +344,9 @@ def validate(
         )
     elif security_state_backend not in ALLOWED_SECURITY_STATE_BACKENDS:
         report.errors.append(
-            "OKR_BACKEND_SECURITY_STATE_BACKEND must be one of: database, redis."
-        )
-    elif security_state_backend == "redis":
-        _validate_redis_url(
-            env.get("OKR_BACKEND_SECURITY_STATE_REDIS_URL", ""),
-            report,
-            strict=(mode == "runtime"),
+            "OKR_BACKEND_SECURITY_STATE_BACKEND must be database; "
+            f"found '{security_state_backend}'. The Redis security-state backend "
+            "was removed."
         )
 
     _validate_backend_bind_address(env.get("OKR_BACKEND_BIND_ADDRESS", ""), report)
