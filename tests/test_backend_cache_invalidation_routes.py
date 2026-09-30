@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import time
 
 import pytest
@@ -57,129 +56,10 @@ def client(monkeypatch):
     return TestClient(backend_main.app)
 
 
-def test_internal_cache_invalidation_is_actorless_and_fixed_purpose(client):
-    read = _request(client, "GET", PATH)
-    assert read.status_code == 200
-    assert read.json() == {"key": "okr:cache:invalidation_ts", "value": None}
-
-    body = json.dumps({"timestamp": "1729"}, separators=(",", ":")).encode()
-    write = _request(client, "POST", PATH, body=body)
-    assert write.status_code == 200
-    assert write.json() == {
-        "key": "okr:cache:invalidation_ts",
-        "value": "1729",
-        "status": "updated",
-    }
-    assert _request(client, "GET", PATH).json()["value"] == "1729"
-    assert client.get(f"{PATH}/arbitrary-key").status_code == 404
-
-
-def test_internal_cache_invalidation_requires_both_controls_and_advertised_key_id(
-    client,
-):
-    missing_token = _request(client, "GET", PATH, headers={"X-OKR-Service-Token": ""})
-    assert missing_token.status_code == 401
-
-    invalid_token = _request(
-        client, "GET", PATH, headers={"X-OKR-Service-Token": "invalid"}
-    )
-    assert invalid_token.status_code == 401
-
-    invalid_signature = _request(
-        client, "GET", PATH, headers={"X-OKR-Signature": "invalid"}
-    )
-    assert invalid_signature.status_code == 401
-
-    missing_signature = _request(client, "GET", PATH, headers={"X-OKR-Signature": ""})
-    assert missing_signature.status_code == 401
-
-    missing_key_id = _request(client, "GET", PATH, headers={"X-OKR-Key-Id": ""})
-    assert missing_key_id.status_code == 401
-
-    wrong_key_id = _request(client, "GET", PATH, headers={"X-OKR-Key-Id": "old"})
-    assert wrong_key_id.status_code == 401
-
-    repeated_nonce = "one-use-cache-nonce"
-    assert _request(client, "GET", PATH, nonce=repeated_nonce).status_code == 200
-    assert _request(client, "GET", PATH, nonce=repeated_nonce).status_code == 401
-
-
-@pytest.mark.parametrize("timestamp", ["0", "-1", "1.0", "١٢٣"])
-def test_cache_invalidation_rejects_invalid_timestamp(client, timestamp):
-    body = json.dumps({"timestamp": timestamp}, separators=(",", ":")).encode()
-    response = _request(client, "POST", PATH, body=body)
-    assert response.status_code == 422
-
-
 def test_generic_state_route_remains_actor_and_session_bound(client):
     response = _request(client, "GET", "/v1/state/ordinary-key")
     assert response.status_code == 401
     assert response.json()["detail"] == "Actor-bound route requires a signed actor."
-
-
-@pytest.mark.parametrize(
-    ("setting", "value"),
-    [
-        ("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "false"),
-        ("OKR_BACKEND_ENFORCE_TOKEN", "false"),
-    ],
-)
-def test_internal_cache_route_fails_closed_when_a_service_control_is_disabled(
-    client, monkeypatch, setting, value
-):
-    monkeypatch.setenv(setting, value)
-    response = _request(client, "GET", PATH)
-    assert response.status_code == 503
-
-
-@pytest.mark.parametrize("method", ["GET", "POST"])
-@pytest.mark.parametrize("backend", ["database", "redis"])
-def test_cache_invalidation_reports_configured_shared_state_failure(
-    client, monkeypatch, tmp_path, method, backend
-):
-    import backend_app.security_state as security_state
-
-    def unavailable(*_args, **_kwargs):
-        raise security_state.SecurityStateUnavailableError("provider unavailable")
-
-    if backend == "database":
-        store = security_state.DatabaseSecurityStateStore(
-            database_url=f"sqlite:///{tmp_path / 'shared-state.db'}"
-        )
-        store._ensure_schema()
-        monkeypatch.setattr(store, "get_app_state", lambda _key: "legacy-value")
-        monkeypatch.setattr(store, "get_app_state_strict", unavailable, raising=False)
-        monkeypatch.setattr(store, "set_app_state", unavailable)
-    else:
-
-        class UnavailableRedis:
-            def get(self, _key):
-                raise OSError("redis unavailable")
-
-            def set(self, _key, _value):
-                raise OSError("redis unavailable")
-
-        store = object.__new__(security_state.RedisSecurityStateStore)
-        store._key_prefix = "test-cache"
-        store._client = UnavailableRedis()
-        monkeypatch.setattr(store, "register_nonce_once", lambda **_kwargs: True)
-        monkeypatch.setattr(store, "check_rate_limit", lambda **_kwargs: True)
-
-    memory_fallbacks = []
-
-    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", backend)
-    monkeypatch.setenv("OKR_DATABASE_URL", f"sqlite:///{tmp_path / 'shared-state.db'}")
-    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_REDIS_URL", "redis://unused")
-    monkeypatch.setattr(security_state, "_get_store", lambda: store)
-    monkeypatch.setattr(
-        security_state,
-        "_fallback_to_memory_store",
-        lambda: memory_fallbacks.append(True) or security_state._memory_store,
-    )
-    body = b'{"timestamp":"1729"}' if method == "POST" else b""
-    response = _request(client, method, PATH, body=body)
-    assert response.status_code == 503
-    assert memory_fallbacks == []
 
 
 def test_database_app_state_read_failure_preserves_generic_none_and_strict_error(

@@ -91,7 +91,6 @@ def update_goal_from_crud(
             session.add(goal)
             session.commit()
             session.refresh(goal)
-            crud_module.clear_cache_safe()
         return goal
 
 
@@ -175,7 +174,6 @@ def update_objective_from_crud(
 
             session.commit()
             session.refresh(item)
-            crud_module.clear_cache_safe()
         return item
 
 
@@ -285,7 +283,6 @@ def update_key_result_from_crud(
 
             session.commit()
             session.refresh(item)
-            crud_module.clear_cache_safe()
         return item
 
 
@@ -374,7 +371,6 @@ def update_task_from_crud(
         session.add(task)
         session.commit()
         session.refresh(task)
-        crud_module.clear_cache_safe()
         return task
 
 
@@ -399,5 +395,4 @@ def update_key_result_analysis_from_crud(
             session.add(kr)
             session.commit()
             session.refresh(kr)
-            crud_module.clear_cache_safe()
         return kr

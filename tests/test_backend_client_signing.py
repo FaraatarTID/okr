@@ -1,6 +1,3 @@
-import pytest
-
-
 class _FakeResponse:
     status_code = 200
     text = ""
@@ -137,46 +134,3 @@ def test_backend_client_signature_binds_optional_session_assertions(monkeypatch)
         session_actor="17",
     )
     assert actor_only != payload
-
-
-def test_internal_cache_client_call_is_explicitly_actorless_and_signed(monkeypatch):
-    import src.services.backend_client as backend_client
-
-    monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
-    monkeypatch.setenv("OKR_BACKEND_SIGNING_SECRET", "cache-signing-secret")
-    monkeypatch.setenv("OKR_BACKEND_SIGNING_KEY_ID", "cache-key")
-    monkeypatch.setenv("OKR_BACKEND_SERVICE_TOKEN", "cache-service-token")
-    captured = {}
-
-    def fake_request_with_retry(method, url, **kwargs):
-        captured.update(method=method, url=url, headers=dict(kwargs["headers"]))
-        return _FakeResponse({"status": "updated"})
-
-    monkeypatch.setattr(backend_client, "request_with_retry", fake_request_with_retry)
-    result = backend_client.request_internal_cache_invalidation(
-        method="POST", timestamp="1729"
-    )
-
-    assert result == {"status": "updated"}
-    assert captured["url"] == ("http://backend.local/v1/internal/cache-invalidation")
-    headers = captured["headers"]
-    assert headers["X-OKR-Service-Token"] == "cache-service-token"
-    assert headers["X-OKR-Key-Id"] == "cache-key"
-    assert "X-OKR-Signature" in headers
-    assert not any(
-        name.lower()
-        in {
-            "x-okr-actor",
-            "x-okr-token-version",
-            "x-okr-session-id",
-            "x-okr-session-actor",
-        }
-        for name in headers
-    )
-
-
-def test_internal_cache_client_call_rejects_arbitrary_methods(monkeypatch):
-    import src.services.backend_client as backend_client
-
-    with pytest.raises(ValueError, match="GET or POST"):
-        backend_client.request_internal_cache_invalidation(method="DELETE")

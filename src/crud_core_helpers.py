@@ -166,7 +166,6 @@ def try_backend_mutation(
     backend_result = backend_fn(**backend_kwargs)
 
     if "error" not in backend_result:
-        crud_module.clear_cache_safe()
         if extract_result == "node":
             return crud_module._node_from_backend_payload(backend_result)
         if extract_result == "namespace":

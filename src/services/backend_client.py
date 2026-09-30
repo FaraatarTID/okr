@@ -160,16 +160,11 @@ def _headers(
     url: str,
     body_bytes: bytes,
     extra_headers: Optional[Dict[str, str]] = None,
-    actorless_service: bool = False,
 ) -> Dict[str, str]:
     headers = {"Content-Type": "application/json"}
-    if actorless_service:
-        if actor_username is not None:
-            raise ValueError("Actorless service calls cannot supply an actor.")
-    else:
-        if actor_username is None:
-            raise ValueError("Actor-bound backend calls require an actor.")
-        headers["X-OKR-Actor"] = str(actor_username).strip()
+    if actor_username is None:
+        raise ValueError("Actor-bound backend calls require an actor.")
+    headers["X-OKR-Actor"] = str(actor_username).strip()
     token = _service_token()
     if token:
         headers["X-OKR-Service-Token"] = token
@@ -251,22 +246,12 @@ def _request_json(
     timeout: tuple[float, float] = (3.0, 20.0),
     retries: int = 1,
     extra_headers: Optional[Dict[str, str]] = None,
-    actorless_service: bool = False,
 ) -> Dict[str, Any]:
     # Ensure the embedded backend is accepting connections before the first request.
     # This is a no-op after the first successful check (guarded by module-level flag).
     _wait_for_backend_ready()
     try:
-        normalized_method = str(method).upper()
-        if actorless_service and (
-            normalized_method not in {"GET", "POST"}
-            or path != "/v1/internal/cache-invalidation"
-            or actor_username is not None
-        ):
-            raise ValueError(
-                "Actorless service access is limited to cache invalidation."
-            )
-        if not actorless_service and actor_username is None:
+        if actor_username is None:
             raise ValueError("Actor-bound backend calls require an actor.")
         base_url = _base_url()
         if not base_url:
@@ -285,7 +270,6 @@ def _request_json(
                 url=url,
                 body_bytes=body_bytes or b"",
                 extra_headers=extra_headers,
-                actorless_service=actorless_service,
             ),
             body_bytes=body_bytes,
             timeout=timeout,
@@ -294,27 +278,6 @@ def _request_json(
         return _response_json_or_error(response)
     except Exception as exc:
         return _transport_error(exc)
-
-
-def request_internal_cache_invalidation(
-    *, method: str, timestamp: str | None = None
-) -> Dict[str, Any]:
-    """Call the fixed private cache invalidation API with service auth only."""
-    normalized_method = str(method).upper()
-    if normalized_method not in {"GET", "POST"}:
-        raise ValueError("Cache invalidation supports GET or POST.")
-    payload = {"timestamp": str(timestamp)} if normalized_method == "POST" else None
-    if normalized_method == "POST" and (timestamp is None or not str(timestamp)):
-        raise ValueError("Cache invalidation POST requires a timestamp.")
-    return _request_json(
-        method=normalized_method,
-        path="/v1/internal/cache-invalidation",
-        actor_username=None,
-        payload=payload,
-        timeout=(2.0, 5.0),
-        retries=0,
-        actorless_service=True,
-    )
 
 
 def _json_safe(value: Any) -> Any:

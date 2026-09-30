@@ -43,7 +43,6 @@ def update_progress_chain_from_crud(*, crud_module, task_id: int):
             refresh_hierarchy_progress(session, int(kr.id), "KEY_RESULT")
 
         session.commit()
-        crud_module.clear_cache_safe()
 
 
 def recalculate_rollup_for_key_results_from_crud(*, crud_module, key_result_ids):
@@ -71,4 +70,3 @@ def recalculate_rollup_for_key_results_from_crud(*, crud_module, key_result_ids)
             calculate_goal_progress(session, goal_id)
 
         session.commit()
-        crud_module.clear_cache_safe()

@@ -54,14 +54,12 @@ export const OPERATION_ROUTES = {
   "api_update_team_v1_teams__team_id__patch": { method: "PATCH", pathTemplate: "/v1/teams/{team_id}" },
   "api_update_user_v1_users__user_id__patch": { method: "PATCH", pathTemplate: "/v1/users/{user_id}" },
   "api_upsert_retro_experiment_outcome_v1_retrospectives__retrospective_id__experiment_outcomes_put": { method: "PUT", pathTemplate: "/v1/retrospectives/{retrospective_id}/experiment-outcomes" },
-  "get_cache_invalidation_timestamp_v1_internal_cache_invalidation_get": { method: "GET", pathTemplate: "/v1/internal/cache-invalidation" },
   "get_environment_control_plane_environments__environment_id__get": { method: "GET", pathTemplate: "/control-plane/environments/{environment_id}" },
   "get_fleet_rollout_control_plane_v1_rollouts__rollout_id__get": { method: "GET", pathTemplate: "/control-plane/v1/rollouts/{rollout_id}" },
   "healthz_healthz_get": { method: "GET", pathTemplate: "/healthz" },
   "list_environments_control_plane_environments_get": { method: "GET", pathTemplate: "/control-plane/environments" },
   "register_internal_session_v1_internal_session_registry_register_post": { method: "POST", pathTemplate: "/v1/internal/session-registry/register" },
   "revoke_internal_session_v1_internal_session_registry_revoke_post": { method: "POST", pathTemplate: "/v1/internal/session-registry/revoke" },
-  "set_cache_invalidation_timestamp_v1_internal_cache_invalidation_post": { method: "POST", pathTemplate: "/v1/internal/cache-invalidation" },
 } as const;
 
 export const BFF_PUBLIC_OPERATION_IDS = [
@@ -169,14 +167,12 @@ export interface BackendOperationPaths {
   "api_update_team_v1_teams__team_id__patch": `/v1/teams/${number}`;
   "api_update_user_v1_users__user_id__patch": `/v1/users/${number}`;
   "api_upsert_retro_experiment_outcome_v1_retrospectives__retrospective_id__experiment_outcomes_put": `/v1/retrospectives/${number}/experiment-outcomes`;
-  "get_cache_invalidation_timestamp_v1_internal_cache_invalidation_get": `/v1/internal/cache-invalidation`;
   "get_environment_control_plane_environments__environment_id__get": `/control-plane/environments/${string}`;
   "get_fleet_rollout_control_plane_v1_rollouts__rollout_id__get": `/control-plane/v1/rollouts/${number}`;
   "healthz_healthz_get": `/healthz`;
   "list_environments_control_plane_environments_get": `/control-plane/environments`;
   "register_internal_session_v1_internal_session_registry_register_post": `/v1/internal/session-registry/register`;
   "revoke_internal_session_v1_internal_session_registry_revoke_post": `/v1/internal/session-registry/revoke`;
-  "set_cache_invalidation_timestamp_v1_internal_cache_invalidation_post": `/v1/internal/cache-invalidation`;
 }
 
 export type BackendOperationRouteId = keyof typeof OPERATION_ROUTES;

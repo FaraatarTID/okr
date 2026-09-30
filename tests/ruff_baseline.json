@@ -157,7 +157,7 @@
       "BLE001": 1
     },
     "src/database.py": {
-      "BLE001": 4,
+      "BLE001": 3,
       "S105": 1
     },
     "src/domain/auth_service.py": {
@@ -198,9 +198,6 @@
     "src/services/pdf_service.py": {
       "BLE001": 5,
       "S110": 2
-    },
-    "src/utils/cache_utils.py": {
-      "BLE001": 1
     },
     "tests/test_e2e_playwright_spa_login_to_atlas.py": {
       "BLE001": 10

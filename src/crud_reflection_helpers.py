@@ -91,7 +91,6 @@ def create_weekly_plan_from_crud(
                     "actor_team_id": getattr(actor_user, "team_id", None),
                 },
             )
-            crud_module.clear_cache_safe()
             return existing
 
         plan = crud_module.WeeklyPlan(
@@ -124,7 +123,6 @@ def create_weekly_plan_from_crud(
                 "actor_team_id": getattr(actor_user, "team_id", None),
             },
         )
-        crud_module.clear_cache_safe()
         return plan
 
 
@@ -197,7 +195,6 @@ def create_retrospective_from_crud(
             session.add(existing)
             session.commit()
             session.refresh(existing)
-            crud_module.clear_cache_safe()
             return existing
 
         retro = crud_module.Retrospective(
@@ -210,7 +207,6 @@ def create_retrospective_from_crud(
         session.add(retro)
         session.commit()
         session.refresh(retro)
-        crud_module.clear_cache_safe()
         return retro
 
 

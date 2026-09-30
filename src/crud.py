@@ -52,7 +52,6 @@ from src.config_runtime import get_bool_config, get_config_value  # noqa: F401
 from src.database import get_session_context as _database_get_session_context  # noqa: F401
 from src.domain import authorization as domain_auth  # noqa: F401
 from src.audit import audit_log  # noqa: F401
-from src.utils.cache_utils import clear_cache_safe  # noqa: F401
 
 from src import crud_runtime_helpers as _crud_runtime_helpers
 from src import crud_auth_helpers as _crud_auth_helpers

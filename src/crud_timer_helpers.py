@@ -179,7 +179,6 @@ def start_timer_from_crud(*, crud_module, task_id: int, user_id: str):
             actor=user_id,
             details={"task_id": task_id, "work_log_id": work_log.id},
         )
-        crud_module.clear_cache_safe()
 
         return work_log
 
@@ -222,7 +221,6 @@ def stop_timer_from_crud(
                     actor=user_id,
                     details={"task_id": task_id, "reason": "missing_active_work_log"},
                 )
-                crud_module.clear_cache_safe()
             return None
 
         now = crud_module.utc_now_naive()
@@ -269,7 +267,6 @@ def stop_timer_from_crud(
                 "credited_minutes": credited_minutes,
             },
         )
-        crud_module.clear_cache_safe()
 
         return work_log
 
@@ -355,7 +352,6 @@ def add_manual_log_from_crud(
         session.add(task)
         session.commit()
         session.refresh(work_log)
-        crud_module.clear_cache_safe()
         return work_log
 
 
@@ -418,6 +414,5 @@ def delete_work_log_from_crud(
 
             session.delete(work_log)
             session.commit()
-            crud_module.clear_cache_safe()
             return True
         return False

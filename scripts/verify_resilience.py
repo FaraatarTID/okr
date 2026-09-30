@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run resilience verification checks for distributed cache and URL state recovery."""
+"""Run resilience verification checks for distributed state and URL state recovery."""
 
 from __future__ import annotations
 
@@ -18,8 +18,6 @@ from typing import Iterable
 ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_PYTEST_TARGETS: tuple[str, ...] = (
-    "tests/test_distributed_state_service.py",
-    "tests/test_cache_utils.py",
     "tests/test_crud_backend_mutation_proxy.py",
     "tests/test_app_query_helpers.py",
     "tests/test_app_auth_helpers.py",
@@ -556,40 +554,6 @@ def _run_live_backend_checks(
             )
         )
 
-    before_ts = distributed_state_service.get_last_invalidation_timestamp()
-    broadcast_ok = distributed_state_service.broadcast_cache_invalidation(
-        actor_username=actor_username
-    )
-    after_ts = distributed_state_service.get_last_invalidation_timestamp()
-
-    if not broadcast_ok:
-        results.append(
-            CheckResult(
-                name="live_cache_invalidation_signal",
-                status="fail",
-                detail="Failed to broadcast cache invalidation signal.",
-            )
-        )
-    elif int(after_ts) <= int(before_ts):
-        results.append(
-            CheckResult(
-                name="live_cache_invalidation_signal",
-                status="fail",
-                detail=(
-                    "Invalidation timestamp did not advance. "
-                    f"before={before_ts}, after={after_ts}."
-                ),
-            )
-        )
-    else:
-        results.append(
-            CheckResult(
-                name="live_cache_invalidation_signal",
-                status="pass",
-                detail=f"Invalidation timestamp advanced: {before_ts} -> {after_ts}.",
-            )
-        )
-
     return results
 
 
@@ -601,7 +565,7 @@ def _print_results(results: list[CheckResult]) -> None:
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Run resilience verification checks for distributed cache invalidation "
+            "Run resilience verification checks for distributed state "
             "and URL-state failover support."
         )
     )

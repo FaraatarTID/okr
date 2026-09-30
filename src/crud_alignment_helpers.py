@@ -165,7 +165,6 @@ def create_alignment_from_crud(
                 "child_id": child_id,
             },
         )
-        crud_module.clear_cache_safe()
         return edge
 
 
@@ -210,7 +209,6 @@ def delete_alignment_from_crud(
             crud_module.audit_log(
                 "delete", "alignment_edge", details={"edge_id": edge_id}
             )
-            crud_module.clear_cache_safe()
             return True
     return False
 
@@ -289,7 +287,6 @@ def create_objective_alignment_link_from_crud(
                 "direction": direction,
             },
         )
-        crud_module.clear_cache_safe()
         return link
 
 
@@ -318,5 +315,4 @@ def delete_objective_alignment_link_from_crud(
             "objective_alignment_link",
             details={"link_id": link_id},
         )
-        crud_module.clear_cache_safe()
         return True

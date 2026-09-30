@@ -172,7 +172,6 @@ def test_stale_version_rejects_before_every_actor_bound_backend_handler(monkeypa
         not in {
             "/v1/internal/session-registry/register",
             "/v1/internal/session-registry/revoke",
-            "/v1/internal/cache-invalidation",
         }
     ]
     assert len(routes) >= 48
