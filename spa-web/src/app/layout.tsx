@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./orbit-map.css";
 
 export const metadata: Metadata = {
   title: "OKR Atlas SPA",

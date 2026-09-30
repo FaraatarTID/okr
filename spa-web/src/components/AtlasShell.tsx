@@ -1483,10 +1483,11 @@ export default function AtlasShell() {
         cycleResolveError={cycleResolveError}
         snapshotError={snapshotError}
       />
-      <section className="panel atlas-parity-panel" style={{ marginTop: "0.9rem", padding: "0.9rem" }}>
+      <section className="atlas-parity-panel" style={{ marginTop: "0.9rem" }}>
         <AtlasFocusMapPanel
           filteredRefs={filteredRefs}
           atlasIndex={atlasRuntime?.index || null}
+          atlasRoots={atlasRuntime?.roots || []}
           selectedRef={selectedRef}
           onSelectRef={(ref: string) => {
             setSelectedRef(ref);
