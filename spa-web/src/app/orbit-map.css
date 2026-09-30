@@ -177,6 +177,7 @@
 .orbit-map__progress-value { fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round; transition: stroke-dasharray 300ms ease; }
 .orbit-map__node-core { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 50%; color: currentColor; background: transparent; cursor: pointer; font-size: 0.69rem; font-weight: 850; letter-spacing: -0.02em; }
 .orbit-map__node-core:focus-visible { outline: 3px solid #302264; outline-offset: 2px; }
+.orbit-map__node-core.atlas-node-item.is-active { border: 0; background: transparent; }
 .orbit-map__node.is-selected .orbit-map__progress-track { stroke: currentColor; stroke-width: 2; }
 .orbit-map__node-label { display: flex; flex-direction: column; justify-content: center; width: 100%; height: 100%; overflow: hidden; padding: 0.2rem 0.32rem; border: 0; border-radius: 7px; color: #34344a; background: transparent; text-align: left; cursor: pointer; font: inherit; }
 .orbit-map__node-label:hover { background: rgba(255, 255, 255, 0.72); }

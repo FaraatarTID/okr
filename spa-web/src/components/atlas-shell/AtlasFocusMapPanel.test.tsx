@@ -35,7 +35,7 @@ describe("AtlasFocusMapPanel", () => {
   it("renders the Orbit Map and a labeled, connected hierarchy", () => {
     renderMap();
 
-    expect(screen.getByRole("heading", { name: "Focus map" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Focus Map" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Strategy relationship map" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Select Goal: Build the most trusted planning platform/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Select Objective: Make planning feel effortless/ })).toBeInTheDocument();
