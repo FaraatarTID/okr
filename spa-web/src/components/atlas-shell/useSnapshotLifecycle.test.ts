@@ -52,7 +52,26 @@ describe("useSnapshotLifecycle", () => {
     expect(result.current.snapshotPayload).not.toBeNull();
   });
 
-  it("clears snapshot payload on explicit clear", async () => {
+
+  it("keeps the same snapshot object when a reload returns identical data", async () => {
+    const readAtlasSnapshotMock = vi.mocked(api.readAtlasSnapshot);
+    readAtlasSnapshotMock.mockImplementation(async () => ({ roots: [1], index: {}, users_map: {} }) as never);
+
+    const { result } = renderHook(() =>
+      useSnapshotLifecycle({ user: baseUser, mode: "dashboard", parsedCycleId: 12, ownerIds: [1], ownerIdsError: "" }),
+    );
+    await act(async () => { await result.current.loadSnapshotForUser(baseUser); });
+    const first = result.current.snapshotPayload;
+    expect(first).not.toBeNull();
+
+    await act(async () => { await result.current.loadSnapshotForUser(baseUser); });
+    expect(result.current.snapshotPayload).toBe(first);
+
+    readAtlasSnapshotMock.mockImplementation(async () => ({ roots: [1, 2], index: {}, users_map: {} }) as never);
+    await act(async () => { await result.current.loadSnapshotForUser(baseUser); });
+    expect(result.current.snapshotPayload).not.toBe(first);
+    expect((result.current.snapshotPayload as unknown as { roots: number[] }).roots).toEqual([1, 2]);
+  });  it("clears snapshot payload on explicit clear", async () => {
     const readAtlasSnapshotMock = vi.mocked(api.readAtlasSnapshot);
     readAtlasSnapshotMock.mockResolvedValue({ roots: [], index: {}, users_map: {} } as never);
 

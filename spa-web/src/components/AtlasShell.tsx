@@ -253,7 +253,6 @@ export default function AtlasShell() {
     snapshotPending,
     snapshotError,
     snapshotPayload,
-    snapshotPollIntervalMs,
     clearSnapshot,
     loadSnapshotForUser,
   } = useSnapshotLifecycle({
@@ -1468,7 +1467,6 @@ export default function AtlasShell() {
       <AtlasModeControlsPanel
         cycleLabel={cycleDisplayLabel(resolvedCycle)}
         snapshotPending={snapshotPending}
-        snapshotPollIntervalMs={snapshotPollIntervalMs}
         cycleId={effectiveCycleId}
         cycleOptions={cycleOptions}
         canManageCycleSelection={canManageCycleSelection}

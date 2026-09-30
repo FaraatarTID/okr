@@ -6,6 +6,33 @@ import { readSessionUser, SessionAuthError, type AuthUser } from "@/lib/api";
 
 const SESSION_REFRESH_MS = 60_000;
 
+/**
+ * True when two session payloads carry the same fields.
+ *
+ * The session is re-read every minute and on every tab focus. Roughly thirty
+ * effects across the shell are keyed on the `user` object, so handing them a
+ * fresh but identical object makes each one re-run: the snapshot reloads, the
+ * "Loading..." indicators flash and the open panel refetches. Keeping the previous
+ * reference when nothing changed makes the background check invisible.
+ */
+export function isSameSessionUser(a: AuthUser | null, b: AuthUser | null): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  const left = a as unknown as Record<string, unknown>;
+  const right = b as unknown as Record<string, unknown>;
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) {
+    if (left[key] !== right[key]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export default function useAuthBootstrap() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authHydrated, setAuthHydrated] = useState(false);
@@ -24,7 +51,7 @@ export default function useAuthBootstrap() {
         if (!active) {
           return;
         }
-        setUser(sessionUser);
+        setUser((previous) => (isSameSessionUser(previous, sessionUser) ? previous : sessionUser));
         setAuthHydrated(true);
       } catch (error) {
         if (!active) {

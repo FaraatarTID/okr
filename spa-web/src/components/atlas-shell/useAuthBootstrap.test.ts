@@ -50,7 +50,31 @@ describe("useAuthBootstrap", () => {
     expect(result.current.user).toBeNull();
   });
 
-  it("keeps the access gate pending after an initial transient failure until retry succeeds", async () => {
+
+  it("keeps the same user object when the periodic session check returns identical data", async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.readSessionUser).mockImplementation(async () => ({ ...admin }));
+    const { result } = renderHook(() => useAuthBootstrap());
+    await settle();
+    const first = result.current.user;
+    expect(first?.username).toBe("alice");
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(vi.mocked(api.readSessionUser).mock.calls.length).toBeGreaterThan(1);
+    expect(result.current.user).toBe(first);
+  });
+
+  it("replaces the user object when a field such as role actually changes", async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.readSessionUser).mockResolvedValueOnce({ ...admin }).mockResolvedValue({ ...member });
+    const { result } = renderHook(() => useAuthBootstrap());
+    await settle();
+    const first = result.current.user;
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(result.current.user).not.toBe(first);
+    expect(result.current.user?.role).toBe("member");
+  });  it("keeps the access gate pending after an initial transient failure until retry succeeds", async () => {
     vi.useFakeTimers();
     vi.mocked(api.readSessionUser).mockRejectedValueOnce(new Error("unavailable"))
       .mockResolvedValueOnce(admin);
