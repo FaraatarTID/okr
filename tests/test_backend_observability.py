@@ -199,7 +199,7 @@ def test_backend_request_log_events_are_structured(monkeypatch):
     assert latest["event"] == "http_request"
 
 
-def test_supabase_read_timing_exposes_scope_and_handler_phases(monkeypatch):
+def test_database_read_timing_exposes_scope_phase(monkeypatch):
     from backend_app import read_query_helpers
 
     timings: list[str] = []
@@ -208,7 +208,6 @@ def test_supabase_read_timing_exposes_scope_and_handler_phases(monkeypatch):
         timings.append(name)
 
     monkeypatch.setattr(read_query_helpers, "record_timing", fake_record_timing)
-    monkeypatch.setattr(read_query_helpers, "resolve_read_mode", lambda: "supabase_api")
 
     class Main:
         HTTPException = HTTPException
@@ -216,12 +215,8 @@ def test_supabase_read_timing_exposes_scope_and_handler_phases(monkeypatch):
         def _resolve_scope_for_actor(self, actor):
             return {"owner_ids": {1}, "usernames": {actor}, "is_admin": True}
 
-        def read_query_via_supabase_api(self, *, kind, params, actor, scope=None):
-            # The resolved scope has to reach the implementation, not stop at the
-            # guard: the Supabase path filters its rows with it.
-            assert scope is not None
-            assert scope["owner_ids"] == {1}
-            return {"users": []}
+        def get_all_users(self):
+            return []
 
         def _require_allowed_user_id(self, scope, user_id):
             assert user_id in scope["owner_ids"]
@@ -237,4 +232,4 @@ def test_supabase_read_timing_exposes_scope_and_handler_phases(monkeypatch):
     )
 
     assert result == {"users": []}
-    assert timings == ["scope", "handler"]
+    assert timings == ["scope"]

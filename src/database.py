@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import sys
-import time
 import traceback
 from collections.abc import Mapping
 from contextlib import contextmanager
@@ -216,10 +215,6 @@ _migrations_lock = Lock()
 _migrations_applied_urls = set()
 _backup_lock = Lock()
 _emitted_db_advisories: set[str] = set()
-_direct_db_available: Optional[bool] = None
-_direct_db_check_lock = Lock()
-_last_db_probe_at: float = 0.0
-_DB_REPROBE_INTERVAL_SECONDS = 300  # Re-probe every 5 minutes
 
 BACKUP_FORMAT_VERSION = "okr-db-backup/v1"
 _MODEL_BINDING_NAMES = (
@@ -360,50 +355,6 @@ def get_engine():
     if _engine is None:
         _engine = _create_engine(_resolved_database_url())
     return _engine
-
-
-class DirectDBUnavailable(Exception):
-    """Raised when direct PostgreSQL connection is unavailable (for fallback to HTTPS)."""
-
-    pass
-
-
-def _check_direct_db_connection() -> bool:
-    """Test direct PostgreSQL connectivity. Returns True if reachable."""
-    global _direct_db_available, _last_db_probe_at
-    with _direct_db_check_lock:
-        now = time.time()
-        if (
-            _direct_db_available is not None
-            and (now - _last_db_probe_at) < _DB_REPROBE_INTERVAL_SECONDS
-        ):
-            return _direct_db_available
-        try:
-            engine = get_engine()
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            _direct_db_available = True
-            _last_db_probe_at = now
-            logger.info("Direct PostgreSQL connection OK (port 6543)")
-        except Exception as exc:
-            _direct_db_available = False
-            _last_db_probe_at = now
-            logger.warning(
-                "Direct PostgreSQL unavailable: %s — will fall back to HTTPS 443",
-                exc,
-            )
-        return _direct_db_available
-
-
-def is_direct_db_available() -> bool:
-    """Check if direct PostgreSQL is currently reachable (re-probes periodically)."""
-    return _check_direct_db_connection()
-
-
-def reset_direct_db_status() -> None:
-    """Reset cached DB status so next query re-probes the connection."""
-    global _direct_db_available
-    _direct_db_available = None
 
 
 def _is_benign_alembic_config_keyerror(exc: BaseException) -> bool:

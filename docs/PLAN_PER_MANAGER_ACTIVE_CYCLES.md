@@ -4,6 +4,7 @@ Documentation HQ: [README](../README.md)
 
 Status: **CLOSED (implemented, deployed, and verified)**
 Date: 2026-08-26
+Note (2026-09-30): the `supabase_api` mode referenced below (`src/services/supabase_api_mode_operations.py`, item B4) and the `fn_activate_cycle` SQL function no longer exist in the codebase. This plan is kept as history.
 Supersedes: the single-global-active-cycle invariant documented in ARCHITECTURE.md and enforced by migrations `z3a4b5c6d7e8` / `a4b5c6d7e8f9`.
 
 ---

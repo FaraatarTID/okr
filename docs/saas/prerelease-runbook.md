@@ -126,15 +126,14 @@ OKR_STRICT_RUNTIME_PREFLIGHT=true
 BFF_COOKIE_SECURE=true
 ```
 
-`OKR_DATA_ACCESS_MODE` is an explicit backing-service adapter selection, not a
-fail-open fallback. `database` uses the environment-provided PostgreSQL URL;
-`supabase_api` uses the environment-provided `SUPABASE_URL` and API key for
-the operations supported by that adapter. Select one mode deliberately for an
-environment and validate its complete operation coverage before release.
+`OKR_DATA_ACCESS_MODE` must be `database`, which uses the
+environment-provided PostgreSQL URL; it is the only accepted value and any other
+value stops startup.
 
 Store the private database URL, backend token/signing secret, BFF session
 secret, and synthetic administrator password as Darkube secrets. Keep
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_ANON_KEY` empty.
+`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_ANON_KEY` empty;
+the app does not read them and the SaaS profile rejects them if set.
 Generate fresh values for every reset. Never place secret values in this file,
 GitHub, or evidence.
 

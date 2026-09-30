@@ -7,11 +7,9 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from backend_app.actor_identity import resolve_actor_username
-from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mode
 from src.crud import get_active_cycles, get_all_cycles
 from src.database import get_session_context
 from src.models import User, UserRole
-from src.services.supabase_api_mode import read_query_via_supabase_api
 
 
 # Per-request scope cache. Deliberately a ContextVar rather than a module global: the
@@ -179,132 +177,6 @@ def _resolve_actor_scope(
     }
 
 
-def _resolve_actor_scope_via_supabase_api(
-    actor_username: str, token_version: Optional[int] = None
-) -> dict[str, Any]:
-    normalized_actor_username = str(actor_username or "").strip()
-    all_users_rows = list(
-        (
-            read_query_via_supabase_api(
-                kind="users.all",
-                params={},
-                actor=normalized_actor_username,
-            )
-            or {}
-        ).get("users")
-        or []
-    )
-    actor = next(
-        (
-            dict(row)
-            for row in all_users_rows
-            if isinstance(row, dict)
-            and str(row.get("username") or "").strip() == normalized_actor_username
-        ),
-        {},
-    )
-    if not actor:
-        actor_resp = read_query_via_supabase_api(
-            kind="users.by_username",
-            params={"username": normalized_actor_username},
-            actor=normalized_actor_username,
-        )
-        actor = dict((actor_resp or {}).get("user") or {})
-    if not actor or not bool(actor.get("is_active", True)):
-        raise HTTPException(status_code=403, detail="Actor is not authorized.")
-
-    if token_version is not None:
-        current_version = actor.get("token_version")
-        if type(current_version) is not int or current_version <= 0:
-            raise HTTPException(
-                status_code=503, detail="Current account state is unavailable."
-            )
-        if token_version != current_version:
-            raise HTTPException(
-                status_code=401, detail="Session invalidated. Please log in again."
-            )
-
-    actor_id_int = int(actor.get("id") or 0)
-    if actor_id_int <= 0:
-        raise HTTPException(status_code=403, detail="Actor is not authorized.")
-
-    role = str(actor.get("role") or "member").strip().lower()
-    rows: list[dict[str, Any]] = []
-    if role == "admin":
-        rows = all_users_rows
-    elif role == "manager":
-        manager_rows = list(
-            (
-                read_query_via_supabase_api(
-                    kind="users.team_members",
-                    params={"manager_id": actor_id_int},
-                    actor=str(actor_username or "").strip(),
-                )
-                or {}
-            ).get("users")
-            or []
-        )
-        rows = [dict(actor)] + [
-            dict(row) for row in manager_rows if isinstance(row, dict)
-        ]
-    else:
-        rows = [dict(actor)]
-
-    owner_ids: set[int] = set()
-    usernames: set[str] = set()
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        if not bool(row.get("is_active", True)):
-            continue
-        try:
-            user_id_int = int(row.get("id") or 0)
-        except (TypeError, ValueError):
-            continue
-        username_text = str(row.get("username") or "").strip()
-        if user_id_int <= 0 or not username_text:
-            continue
-        owner_ids.add(user_id_int)
-        usernames.add(username_text)
-
-    if not owner_ids:
-        owner_ids.add(actor_id_int)
-        usernames.add(str(actor.get("username") or actor_username))
-
-    # Admin-owned cycles are GLOBAL (visible to every scope), so scopes need
-    # to know which users are admins to evaluate cycle visibility.
-    admin_ids: set[int] = set()
-    for row in all_users_rows:
-        if not isinstance(row, dict):
-            continue
-        if str(row.get("role") or "").strip().lower() != "admin":
-            continue
-        try:
-            admin_id_int = int(row.get("id") or 0)
-        except (TypeError, ValueError):
-            continue
-        if admin_id_int > 0:
-            admin_ids.add(admin_id_int)
-
-    manager_id_raw = actor.get("manager_id")
-    manager_id = int(manager_id_raw) if manager_id_raw is not None else None
-    team_id_raw = actor.get("team_id")
-    team_id = int(team_id_raw) if team_id_raw is not None else None
-    return {
-        "is_admin": role == "admin",
-        "role": role,
-        "actor_id": actor_id_int,
-        "actor_username": str(actor.get("username") or actor_username),
-        "display_name": str(actor.get("display_name") or ""),
-        "manager_id": manager_id,
-        # See the TCP resolver: team membership scopes `teams.all` / `teams.by_id`.
-        "team_id": team_id,
-        "owner_ids": owner_ids,
-        "usernames": usernames,
-        "admin_ids": admin_ids,
-    }
-
-
 def _scope_cycle_id(cycle: Any) -> int:
     if isinstance(cycle, dict):
         return int(cycle.get("id") or 0)
@@ -337,31 +209,9 @@ def _scope_cycle_is_active(cycle: Any) -> bool:
 def _list_cycles_for_scope(
     *, scope: dict[str, Any], active_only: bool = False
 ) -> list[Any]:
-    if resolve_read_mode() == "supabase_api":
-        kind = "cycles.active" if active_only else "cycles.all"
-        payload = read_query_via_supabase_api(
-            kind=kind,
-            params={},
-            actor=str(scope.get("actor_username") or ""),
-        )
-        return list((payload or {}).get("cycles") or [])
-    try:
-        return (
-            list(get_active_cycles() or [])
-            if active_only
-            else list(get_all_cycles() or [])
-        )
-    except Exception:
-        notify_tcp_db_failure()
-        if resolve_read_mode() == "supabase_api":
-            kind = "cycles.active" if active_only else "cycles.all"
-            payload = read_query_via_supabase_api(
-                kind=kind,
-                params={},
-                actor=str(scope.get("actor_username") or ""),
-            )
-            return list((payload or {}).get("cycles") or [])
-        raise
+    return (
+        list(get_active_cycles() or []) if active_only else list(get_all_cycles() or [])
+    )
 
 
 def _scope_role(scope: dict[str, Any]) -> str:
@@ -412,21 +262,8 @@ def _resolve_scope_for_actor(
 def _resolve_scope_for_actor_uncached(
     actor: str, token_version: Optional[int] = None
 ) -> dict[str, Any]:
-    if resolve_read_mode() == "supabase_api":
-        return _resolve_actor_scope_via_supabase_api(actor, token_version=token_version)
-    try:
-        with get_session_context() as session:
-            return _resolve_actor_scope(session, actor, token_version=token_version)
-    except HTTPException:
-        # Authorization outcomes are real answers, not transport failures.
-        raise
-    except Exception:
-        notify_tcp_db_failure()
-        if resolve_read_mode() == "supabase_api":
-            return _resolve_actor_scope_via_supabase_api(
-                actor, token_version=token_version
-            )
-        raise
+    with get_session_context() as session:
+        return _resolve_actor_scope(session, actor, token_version=token_version)
 
 
 def _require_admin_actor_scope(actor: str) -> None:
@@ -607,7 +444,6 @@ __all__ = [
     "_scope_role",
     "_resolve_actor",
     "_resolve_actor_scope",
-    "_resolve_actor_scope_via_supabase_api",
     "_resolve_scope_for_actor",
     "_list_cycles_for_scope",
     "_is_scope_admin_or_manager",

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime
 import time
 from typing import Any
 
-from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mode
 from src.services.app_shell_runtime import (
     serialize_cycle,
     serialize_user,
@@ -14,8 +12,6 @@ from src.services.app_shell_runtime import (
 )
 from src.observability import record_timing
 from src.serialization_helpers import _enum_value
-
-_RPC_FALLBACK_WARNED = False
 
 
 @contextmanager
@@ -30,11 +26,10 @@ def _timed_phase(name: str):
 def get_read_query_allowed_kinds() -> set[str]:
     """Kinds the read endpoint will dispatch.
 
-    `mindmap.children` used to be listed here while being implemented on neither
-    data path: TCP fell through to "Unsupported read query kind" and HTTPS raised
-    NotImplementedError, so it was advertised surface area that could only fail.
-    It is removed rather than implemented speculatively; it should come back
-    together with a scoped implementation and a test that covers it.
+    `mindmap.children` used to be listed here while not being implemented: it fell
+    through to "Unsupported read query kind", so it was advertised surface area that
+    could only fail. It is removed rather than implemented speculatively; it should
+    come back together with a scoped implementation and a test that covers it.
     """
     return {
         "audit.summary",
@@ -79,8 +74,7 @@ _USER_ID_PARAM_READ_KINDS = frozenset(
 _USERNAME_PARAM_READ_KINDS = frozenset({"users.by_username"})
 _MANAGER_ID_PARAM_READ_KINDS = frozenset({"users.team_members", "retros.team"})
 # Row-level scoping: the id in the request is not itself inside the actor's scope,
-# so the implementation filters the rows it returns. TCP already did this; the
-# Supabase implementation is handed the resolved scope and now does the same.
+# so the implementation filters the rows it returns.
 _ROW_SCOPED_READ_KINDS = frozenset(
     {
         "node.get",
@@ -99,7 +93,7 @@ _ROW_SCOPED_READ_KINDS = frozenset(
         "teams.by_id",
     }
 )
-# `ritual.snapshot` resolves the actor inside the database function (`p_username`).
+# `ritual.snapshot` fans out into sub-queries that each apply their own actor scope.
 _SELF_SCOPED_READ_KINDS = frozenset({"ritual.snapshot"})
 # `krs.needing_checkin` needs two predicates, in the order its TCP branch applies
 # them: the username (400 when absent, then authorized), then the cycle.
@@ -126,60 +120,6 @@ def get_read_scope_policy_kinds() -> frozenset:
     return _READ_SCOPE_POLICY
 
 
-# Kinds whose request carries a node id that is not itself part of the actor's
-# scope. On the HTTPS path the node has to be read to authorize it, so the check
-# lives here; the TCP branches authorize through `get_node(..., actor_username)`
-# instead, which is why this one is confined to the HTTPS path.
-#
-# kind -> (fixed node type or None, id param, not-found detail)
-_HTTPS_NODE_OWNER_READ_KINDS: dict[str, tuple[str | None, str, str]] = {
-    "node.get": (None, "node_id", "Node not found."),
-    "node.detect_type": (None, "node_id", "Node not found."),
-    "mindmap.root": (None, "node_id", "Node not found."),
-    "work_logs.by_task": ("TASK", "task_id", "Task not found."),
-    "experiments.for_kr": ("KEY_RESULT", "key_result_id", "Key result not found."),
-    "experiments.active_for_kr": (
-        "KEY_RESULT",
-        "key_result_id",
-        "Key result not found.",
-    ),
-    "alignments.context": ("OBJECTIVE", "objective_id", "Objective not found."),
-}
-
-# Tried in order when the request does not name the node type, mirroring the TCP
-# `node.detect_type` branch.
-_NODE_TYPE_CANDIDATES = ("GOAL", "OBJECTIVE", "KEY_RESULT", "TASK")
-
-
-def _require_node_owner_via_https(
-    *, kind: str, params: dict, actor: str, scope: dict, main: Any
-) -> None:
-    """Authorize an HTTPS node read by resolving the owning goal's owner_id."""
-    fixed_type, id_param, detail = _HTTPS_NODE_OWNER_READ_KINDS[kind]
-    node_id = main._coerce_int(params.get(id_param), field_name=id_param)
-    if fixed_type is not None:
-        candidates: tuple[str, ...] = (fixed_type,)
-    elif kind == "node.get":
-        candidates = (str(params.get("node_type") or "").strip().upper(),)
-    else:
-        candidates = _NODE_TYPE_CANDIDATES
-
-    owner_id = None
-    for candidate in candidates:
-        if not candidate:
-            continue
-        owner_id = main._resolve_goal_owner_id_for_node_via_supabase(
-            node_type=candidate,
-            node_id=node_id,
-            actor=actor,
-        )
-        if owner_id is not None:
-            break
-    if owner_id is None:
-        raise main.HTTPException(status_code=404, detail=detail)
-    main._require_allowed_user_id(scope, owner_id)
-
-
 def _team_visible_for_scope(team: Any, scope: dict) -> bool:
     """Teams are scoped to the actor's own membership; admins see every team.
 
@@ -200,40 +140,19 @@ def _team_visible_for_scope(team: Any, scope: dict) -> bool:
         return False
 
 
-# Kinds that name a cycle and are therefore only meaningful for a cycle the actor
-# may use. On the HTTPS path nothing validated the cycle id, so a manager could ask
-# for `krs.by_cycle` on a cycle they do not own and receive its rows; the TCP
-# branches refuse that through `_resolve_effective_cycle_id_for_scope`.
-#
-# Deliberately excludes `cycles.all` / `cycles.active`: they take no cycle id, and
-# running the resolver for them would raise 404 for a member with no active cycle,
-# which the TCP branch does not do.
-_CYCLE_ID_PARAM_READ_KINDS = frozenset(
-    {
-        "krs.by_cycle",
-        "tasks.by_cycle",
-        "experiments.for_retro_window",
-    }
-)
-
-
 def _validate_read_scope(
     *, kind: str, params: dict, actor: str, main: Any
 ) -> dict[str, Any]:
     """Resolve the actor scope and refuse anything the policy does not permit.
 
-    Runs before dispatch for both data paths, so whether a request is refused
-    cannot depend on which path happens to be active.
+    Runs before dispatch.
 
     This is deny-by-default on purpose. The previous version enumerated the kinds
     it checked, which made the list itself the defect: a read kind reached
-    production readable and unscoped simply by not being added to it, and the two
-    data paths disagreed for thirteen kinds - including `audit.summary`, which is
-    admin-only on the TCP path and was not checked at all over HTTPS.
+    production readable and unscoped simply by not being added to it.
 
     Row-scoped kinds are returned with their scope so the implementation can
-    filter rows. TCP filters in its branch; the Supabase implementation receives
-    the scope and now filters the same way.
+    filter rows in its branch.
     """
     scope = main._resolve_scope_for_actor(actor)
     if kind in _SELF_SCOPED_READ_KINDS:
@@ -266,26 +185,6 @@ def _validate_read_scope(
         if not username:
             raise main.HTTPException(status_code=400, detail="user_id is required.")
         main._require_allowed_username(scope, username)
-        if resolve_read_mode() == "supabase_api":
-            # HTTPS-only for the same reason as the branch below.
-            main._resolve_effective_cycle_id_for_scope(
-                scope,
-                main._coerce_int(params.get("cycle_id"), field_name="cycle_id"),
-            )
-        return scope
-    if kind in _CYCLE_ID_PARAM_READ_KINDS and resolve_read_mode() == "supabase_api":
-        # Confined to the HTTPS path because the TCP branches already resolve the
-        # cycle through this same helper, and calling it twice would double the
-        # cycle listing on the primary path.
-        main._resolve_effective_cycle_id_for_scope(
-            scope,
-            main._coerce_int(params.get("cycle_id"), field_name="cycle_id"),
-        )
-        return scope
-    if kind in _HTTPS_NODE_OWNER_READ_KINDS and resolve_read_mode() == "supabase_api":
-        _require_node_owner_via_https(
-            kind=kind, params=params, actor=actor, scope=scope, main=main
-        )
         return scope
     if kind in _ROW_SCOPED_READ_KINDS:
         return scope
@@ -295,56 +194,6 @@ def _validate_read_scope(
         status_code=403,
         detail=f"Read query kind '{kind}' has no declared actor scope.",
     )
-
-
-def _row_value(row: Any, key: str) -> Any:
-    if isinstance(row, dict):
-        return row.get(key)
-    return getattr(row, key, None)
-
-
-def _apply_https_cycle_row_scope(
-    *, kind: str, payload: Any, scope: dict, main: Any
-) -> Any:
-    """Apply the TCP cycle-visibility rule to rows fetched over HTTPS.
-
-    The Supabase branch constrains `cycle` by nothing at all, so every cycle came
-    back. The rule is applied here rather than in the Supabase query because the
-    member case selects the primary active cycle and that selection is not
-    expressible as a PostgREST filter; reusing `main._visible_cycles_for_scope` and
-    `main._pick_primary_active_cycle` also means the two paths cannot drift, which a
-    second implementation of the same predicate could.
-
-    The over-fetch is a performance cost, not a disclosure: the rows are filtered in
-    the process that already holds them, and the actor never receives the rest.
-    """
-    if kind not in {"cycles.all", "cycles.active"}:
-        return payload
-    if not isinstance(payload, dict):
-        return payload
-    cycles = payload.get("cycles")
-    if not isinstance(cycles, list):
-        return payload
-
-    visible = list(main._visible_cycles_for_scope(scope, cycles))
-    if main._scope_role(scope) != "member":
-        output = dict(payload)
-        output["cycles"] = visible
-        return output
-
-    if kind == "cycles.all" and not visible:
-        # The TCP branch retries against the active cycles when a member sees none.
-        visible = list(
-            main._visible_cycles_for_scope(
-                scope,
-                [cycle for cycle in cycles if bool(_row_value(cycle, "is_active"))],
-            )
-        )
-    active = [cycle for cycle in visible if bool(_row_value(cycle, "is_active"))]
-    primary = main._pick_primary_active_cycle(active, scope)
-    output = dict(payload)
-    output["cycles"] = [primary] if primary is not None else []
-    return output
 
 
 def read_query_payload(
@@ -366,14 +215,8 @@ def read_query_payload(
             detail=f"Unsupported read query kind: {kind}",
         )
 
-    # Actor scope is validated once, before any dispatch, for BOTH data paths.
-    #
-    # This used to run only on the HTTPS path, and that guard enumerated the kinds
-    # it checked, so thirteen kinds were scoped over TCP and served unscoped over
-    # HTTPS - including `audit.summary`, which is admin-only on the TCP branch and
-    # was not checked at all on this one.
+    # Actor scope is validated once, before any dispatch.
     scope: dict[str, Any] | None = None
-    scope_failure: Exception | None = None
     try:
         with _timed_phase("scope"):
             scope = _validate_read_scope(
@@ -384,30 +227,12 @@ def read_query_payload(
             )
     except main.HTTPException:
         raise
-    except Exception as exc:  # scope resolution itself is unavailable
-        scope_failure = exc
+    except Exception:  # scope resolution itself is unavailable; retried below
+        scope = None
 
     if kind == "ritual.snapshot":
         cycle_id = main._coerce_int(params.get("cycle_id"), field_name="cycle_id")
         user_id = params.get("user_id")
-        use_https = resolve_read_mode() == "supabase_api"
-        if use_https:
-            if scope_failure is not None:
-                raise scope_failure
-            if scope is None:
-                raise main.HTTPException(
-                    status_code=503, detail="Actor scope is unavailable."
-                )
-            snapshot_user_scope = _validate_read_scope(
-                kind="weekly_plan.active",
-                params={"user_id": user_id},
-                actor=actor,
-                main=main,
-            )
-            if snapshot_user_scope is None:
-                raise main.HTTPException(
-                    status_code=503, detail="Actor scope is unavailable."
-                )
         review_params = {
             "cycle_id": cycle_id,
             "window_start": params.get("window_start"),
@@ -420,95 +245,6 @@ def read_query_payload(
             "cycle_id": cycle_id,
             "days_threshold": params.get("days_threshold", 7),
         }
-        if use_https:
-            # Preferred path: single authorized RPC (one round trip).
-            rpc_params = {
-                "actor_username": actor,
-                "cycle_id": cycle_id,
-                "days_threshold": params.get("days_threshold", 7),
-                "date": params.get("date"),
-                "window_start": params.get("window_start"),
-                "window_end": params.get("window_end"),
-            }
-            try:
-                snapshot_payload = main.read_query_via_supabase_api(
-                    kind="ritual.snapshot",
-                    params=rpc_params,
-                    actor=actor,
-                )
-                snapshot = snapshot_payload.get("snapshot") or {}
-                return {
-                    "key_results": snapshot.get("key_results", []),
-                    "weekly_plan": snapshot.get("weekly_plan"),
-                    "retros": snapshot.get("retros", []),
-                    "work_logs": snapshot.get("work_logs", []),
-                    "experiments": snapshot.get("experiments", []),
-                }
-            except ValueError as exc:
-                detail = str(exc)
-                # Missing function (migration not applied): fall back to the
-                # bounded concurrent fan-out below. Latched per process via a
-                # module flag so the warning logs only once.
-                if "42883" in detail or "fn_ritual_snapshot" in detail:
-                    global _RPC_FALLBACK_WARNED
-                    if not _RPC_FALLBACK_WARNED:
-                        _RPC_FALLBACK_WARNED = True
-                        main._LOGGER.warning(
-                            "ritual.snapshot RPC missing (42883); using concurrent "
-                            "fan-out fallback until migration y2d3e4f5a6b7 runs."
-                        )
-                    # Fall through to the fan-out path below.
-                else:
-                    # Validation errors from the RPC parameter contract
-                    # propagate as client errors.
-                    raise main.HTTPException(status_code=400, detail=detail) from exc
-            queries = [
-                ("krs.needing_checkin", query_params),
-                (
-                    "weekly_plan.active",
-                    {"user_id": user_id, "date": params.get("date")},
-                ),
-                ("retros.user", {"user_id": user_id, "cycle_id": cycle_id}),
-                (
-                    "work_logs.by_range",
-                    {
-                        "user_id": user_id,
-                        "start_date": params.get("window_start"),
-                        "end_date": params.get("window_end"),
-                    },
-                ),
-                ("experiments.for_retro_window", review_params),
-            ]
-
-            def _run_query(item: tuple[str, dict]) -> dict:
-                query_kind, query_values = item
-                # Deliberately through `read_query_payload` rather than
-                # `read_query_via_supabase_api` directly. The direct call skipped the
-                # actor-scope guard, so four of these five sub-queries (`retros.user`,
-                # `work_logs.by_range`, `krs.needing_checkin`,
-                # `experiments.for_retro_window`) were served unscoped over HTTPS
-                # whenever this RPC-missing fallback ran. The TCP fan-out below
-                # already goes through the guarded entry point, so this also makes
-                # the two paths structurally identical instead of merely similar.
-                return read_query_payload(
-                    kind=query_kind,
-                    params=query_values,
-                    actor=actor,
-                    main=main,
-                    allowed_kinds=allowed,
-                )
-
-            # Bound concurrency: one snapshot creates at most five upstream
-            # requests, but avoids serially paying each Supabase RTT.
-            with ThreadPoolExecutor(max_workers=len(queries)) as executor:
-                results = list(executor.map(_run_query, queries))
-            return {
-                "key_results": results[0].get("key_results", []),
-                "weekly_plan": results[1].get("weekly_plan"),
-                "retros": results[2].get("retros", []),
-                "work_logs": results[3].get("work_logs", []),
-                "experiments": results[4].get("experiments", []),
-            }
         return {
             "key_results": read_query_payload(
                 kind="krs.needing_checkin",
@@ -551,58 +287,10 @@ def read_query_payload(
             ).get("experiments", []),
         }
 
-    if resolve_read_mode() == "supabase_api":
-        if scope_failure is not None:
-            raise scope_failure
-        if scope is None:
-            raise main.HTTPException(
-                status_code=503, detail="Actor scope is unavailable."
-            )
-        try:
-            with _timed_phase("handler"):
-                return _apply_https_cycle_row_scope(
-                    kind=str(kind or "").strip(),
-                    payload=main.read_query_via_supabase_api(
-                        kind=str(kind or "").strip(),
-                        params=dict(params or {}),
-                        actor=str(actor or "").strip(),
-                        scope=scope,
-                    ),
-                    scope=scope,
-                    main=main,
-                )
-        except NotImplementedError as exc:
-            raise main.HTTPException(status_code=501, detail=str(exc)) from exc
-        except Exception as exc:
-            # HTTPS fallback itself failing is a real upstream outage.
-            if str(type(exc).__name__) in {
-                "SupabaseTransportError",
-                "CircuitOpenError",
-            }:
-                raise main.HTTPException(
-                    status_code=503,
-                    detail="Upstream data service temporarily unavailable.",
-                ) from exc
-            raise
-
-    try:
-        if scope is None:
-            # Scope resolution on the primary path failed above; retry it here so
-            # the HTTPS-fallback logic below still engages.
-            scope = main._resolve_scope_for_actor(actor)
-    except Exception:
-        # TCP scope resolution failed (e.g. connection refused); if HTTPS
-        # fallback is available, retry the whole read over HTTPS.
-        notify_tcp_db_failure()
-        if resolve_read_mode() == "supabase_api":
-            return read_query_payload(
-                kind=kind,
-                params=params,
-                actor=actor,
-                main=main,
-                allowed_kinds=allowed,
-            )
-        raise
+    if scope is None:
+        # Scope resolution above failed; retry it here so the transport error
+        # surfaces from the same call the handler depends on.
+        scope = main._resolve_scope_for_actor(actor)
 
     if kind == "audit.summary":
         if not bool(scope.get("is_admin", False)):

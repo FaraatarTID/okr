@@ -32,7 +32,7 @@ METRIC_NAME = "client_navigation_to_rendered_route_ms"
 READ_QUERY_PATH = "/api/backend/v1/read/query"
 REQUIRED_READ_SERVER_TIMING = {"app", "data", "bff-upstream"}
 VIEWPORT = {"width": 1600, "height": 1000}
-DATA_ACCESS_MODES = {"database", "supabase_api"}
+DATA_ACCESS_MODES = {"database"}
 ALLOWED_SERVER_TIMING = {"app", "data", "bff-upstream"}
 _SHA_RE = re.compile(r"^[0-9a-f]{40,64}$")
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$")
@@ -286,7 +286,7 @@ def validate_measurement_artifact(payload: object) -> None:
     _utc_timestamp(readiness["checked_at_utc"], "stack_readiness.checked_at_utc")
 
     if conditions["data_access_mode"] not in DATA_ACCESS_MODES:
-        _fail("data_access_mode", "must identify database or supabase_api")
+        _fail("data_access_mode", "must identify database")
     cache = _mapping(
         conditions["cache"],
         "conditions.cache",
@@ -519,7 +519,7 @@ def capture_measurement_report(
     _string(build_id, "build.build_id", _SAFE_ID_RE)
     _string(commit_sha, "build.commit_sha", _SHA_RE)
     if data_access_mode not in DATA_ACCESS_MODES:
-        _fail("data_access_mode", "must identify database or supabase_api")
+        _fail("data_access_mode", "must identify database")
     _string(username, "username")
     _string(password, "password")
 

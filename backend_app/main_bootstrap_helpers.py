@@ -26,10 +26,11 @@ def validate_runtime_preflight() -> None:
     strict = get_bool_config("OKR_STRICT_RUNTIME_PREFLIGHT", default=True)
     profile = get_config_value("OKR_DEPLOYMENT_PROFILE", "")
     mode = get_config_value("OKR_DATA_ACCESS_MODE", "database")
-    if not strict and str(profile).strip().lower() not in {
-        "single_tenant_saas",
-        "saas",
-    }:
+    if (
+        not strict
+        and str(mode or "database").strip().lower() == "database"
+        and str(profile).strip().lower() not in {"single_tenant_saas", "saas"}
+    ):
         return
 
     # The PDF inputs are the real configuration. They used to be hard-coded to a healthy
@@ -57,8 +58,6 @@ def validate_runtime_preflight() -> None:
 
 def make_main_lifespan(
     *,
-    is_supabase_api_mode_enabled: Callable[[], bool],
-    ensure_supabase_api_ready: Callable[[], None],
     init_database: Callable[[], None],
     ensure_admin_exists: Callable[[], None],
     validate_runtime_preflight: Callable[[], None] | None = None,
@@ -67,21 +66,10 @@ def make_main_lifespan(
     async def _lifespan(_app: FastAPI):
         if validate_runtime_preflight is not None:
             validate_runtime_preflight()
-        if is_supabase_api_mode_enabled():
-            ensure_supabase_api_ready()
-        else:
-            init_database()
-            # Hybrid SPA startup relies on bootstrap admin seed for fresh local DB.
-            ensure_admin_exists()
-        try:
-            yield
-        finally:
-            # Release pooled Supabase HTTP connections on shutdown.
-            from src.services.supabase_api_mode_transport import (
-                shutdown_close_transport,
-            )
-
-            shutdown_close_transport()
+        init_database()
+        # Hybrid SPA startup relies on bootstrap admin seed for fresh local DB.
+        ensure_admin_exists()
+        yield
 
     return _lifespan
 

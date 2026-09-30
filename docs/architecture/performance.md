@@ -4,6 +4,8 @@ Documentation HQ: [README](../../README.md)
 
 This document tracks performance baselines and query-budget guardrails for critical hot paths.
 
+> **Note (2026-09-30):** the `supabase_api` mode measured in several sections below was removed; those sections are historical. Only the `database` path exists.
+
 ## Atlas Load-Time Recovery Status
 
 The reported multi-second page load was investigated and the local
@@ -325,7 +327,7 @@ runtime configuration and must not be committed.
 For a local apples-to-apples comparison, start a separate Compose project in
 direct database mode and seed only its disposable PostgreSQL volume. The helper
 is additive-only: it never updates, deletes, truncates, or resets existing rows,
-and it refuses Supabase API mode.
+and it runs only against the direct database mode (the only mode; the removed Supabase API mode is no longer a concern).
 
 PowerShell example:
 
@@ -352,7 +354,7 @@ empty weekly-plan, retrospective, work-log, and experiment sections; the
 active key result is required so the Check-In read is representative. If an
 older fixture has DRAFT rows, the helper refuses to alter them and instructs
 the operator to use a fresh disposable database. Do not point this seed command
-at Supabase API mode or a non-disposable database.
+at a non-disposable database.
 
 ### Supabase snapshot fixture opt-in
 
@@ -428,7 +430,9 @@ Run locally:
 python -m pytest -q tests/test_performance_hotpaths.py
 ```
 
-## Check-In Snapshot RPC (Supabase API Mode)
+## Check-In Snapshot RPC (Supabase API Mode) — historical, removed
+
+> Historical (2026-09-30): the Supabase API mode and the `fn_ritual_snapshot` RPC path were removed. `ritual.snapshot` now runs only through the five-sub-query database path. The numbers below are kept as measured history.
 
 The consolidated `ritual.snapshot` read kind (`fn_ritual_snapshot` RPC, migration `y2d3e4f5a6b7`) replaces the per-section fan-out for the Check-In page in Supabase API mode:
 

@@ -708,7 +708,7 @@ function Start-DockerServices {
         return
     }
 
-    Update-EnvValue -FilePath $envFile -Key "OKR_DATA_ACCESS_MODE" -Value "supabase_api"
+    Update-EnvValue -FilePath $envFile -Key "OKR_DATA_ACCESS_MODE" -Value "database"
     $selectedAiMode = Get-SelectedAiModeFromUi
     $normalizedAiMode = Set-SelectedAiMode -Mode $selectedAiMode
     if ($normalizedAiMode -eq "openai_compatible") {

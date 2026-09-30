@@ -15,8 +15,6 @@ def build_main_app(
     *,
     logger: Any,
     main_module,
-    is_supabase_api_mode_enabled,
-    ensure_supabase_api_ready,
     init_database,
     ensure_admin_exists,
     validate_runtime_preflight=None,
@@ -24,8 +22,6 @@ def build_main_app(
     """Create and configure the application instance used by the entry module."""
 
     lifespan = make_main_lifespan(
-        is_supabase_api_mode_enabled=is_supabase_api_mode_enabled,
-        ensure_supabase_api_ready=ensure_supabase_api_ready,
         init_database=init_database,
         ensure_admin_exists=ensure_admin_exists,
         validate_runtime_preflight=validate_runtime_preflight,

@@ -13,13 +13,7 @@ type UseSnapshotLifecycleInput = {
   ownerIdsError: string;
 };
 
-function resolveSnapshotPollIntervalMs(): number {
-  const mode = String(process.env.NEXT_PUBLIC_OKR_DATA_ACCESS_MODE || "").trim().toLowerCase();
-  if (mode === "supabase_api" || mode === "supabase-http" || mode === "supabase_https") {
-    return 600_000;
-  }
-  return 45_000;
-}
+const SNAPSHOT_POLL_INTERVAL_MS = 45_000;
 
 export default function useSnapshotLifecycle({
   user,
@@ -28,7 +22,7 @@ export default function useSnapshotLifecycle({
   ownerIds,
   ownerIdsError,
 }: UseSnapshotLifecycleInput) {
-  const snapshotPollIntervalMs = resolveSnapshotPollIntervalMs();
+  const snapshotPollIntervalMs = SNAPSHOT_POLL_INTERVAL_MS;
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const [snapshotPending, setSnapshotPending] = useState(false);

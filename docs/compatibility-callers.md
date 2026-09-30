@@ -74,7 +74,7 @@ For each module the scan lists the names it reads through the facade (`backend_m
 The columns overlap: one patch site can target a name that several modules read, so the rows do not add up to 201.
 
 The most patched names are `init_database` (18), `_resolve_actor_scope` (18), `get_session_context` (17),
-`_resolve_scope_for_actor` (12) and `is_supabase_api_mode_enabled` (9).
+`_resolve_scope_for_actor` (12). (`is_supabase_api_mode_enabled`, previously the fifth with 9 patch sites, was removed on 2026-09-30 together with the `supabase_api` mode; the counts in this section were measured before that removal.)
 
 Why this is not a per-module job like `security.py`:
 

@@ -20,17 +20,6 @@ from backend_app.schemas import (
 def register_operations_routes(router: APIRouter, main: Any) -> None:
     """Register timer and job-operation endpoints."""
 
-    def require_database_job_store() -> None:
-        """Prevent Supabase API mode from silently using a split job store."""
-        if main.is_supabase_api_mode_enabled():
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    "Durable job queue is unavailable in Supabase API mode; "
-                    "configure database mode for async job operations."
-                ),
-            )
-
     @router.post(
         "/v1/timer/start",
         response_model=TimerStartResponse,
@@ -44,22 +33,8 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
             header_actor=x_okr_actor,
             payload_actor=payload.user_id,
         )
-        if main.is_supabase_api_mode_enabled():
-            scope = main._resolve_scope_for_actor(actor)
-            owner_id = main._resolve_goal_owner_id_for_node_via_supabase(
-                node_type="TASK",
-                node_id=int(payload.task_id),
-                actor=actor,
-            )
-            if owner_id is not None:
-                main._require_allowed_user_id(scope, int(owner_id))
         try:
-            if main.is_supabase_api_mode_enabled():
-                work_log = main.start_timer_via_supabase_api(
-                    task_id=payload.task_id, actor_username=actor
-                )
-            else:
-                work_log = main.start_timer(payload.task_id, actor)
+            work_log = main.start_timer(payload.task_id, actor)
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except ValueError as exc:
@@ -87,26 +62,10 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
             header_actor=x_okr_actor,
             payload_actor=payload.user_id,
         )
-        if main.is_supabase_api_mode_enabled():
-            scope = main._resolve_scope_for_actor(actor)
-            owner_id = main._resolve_goal_owner_id_for_node_via_supabase(
-                node_type="TASK",
-                node_id=int(payload.task_id),
-                actor=actor,
-            )
-            if owner_id is not None:
-                main._require_allowed_user_id(scope, int(owner_id))
         try:
-            if main.is_supabase_api_mode_enabled():
-                work_log = main.stop_timer_via_supabase_api(
-                    task_id=payload.task_id,
-                    summary=payload.summary,
-                    user_id=actor,
-                )
-            else:
-                work_log = main.stop_timer(
-                    payload.task_id, summary=payload.summary, user_id=actor
-                )
+            work_log = main.stop_timer(
+                payload.task_id, summary=payload.summary, user_id=actor
+            )
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except ValueError as exc:
@@ -143,7 +102,6 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         x_okr_actor: Optional[str] = Header(default=None),
         x_okr_idempotency_key: Optional[str] = Header(default=None),
     ) -> JobView:
-        require_database_job_store()
         actor = main._resolve_actor(
             header_actor=x_okr_actor,
             payload_actor=payload.actor_username,
@@ -199,7 +157,6 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         job_id: str,
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> JobView:
-        require_database_job_store()
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         job = main.get_job(job_id)
         if not job:
@@ -217,7 +174,6 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         job_id: str,
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> JobCancelResponse:
-        require_database_job_store()
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         job = main.request_job_cancel(job_id, actor)
         if not job:
@@ -236,7 +192,6 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         x_okr_actor: Optional[str] = Header(default=None),
         limit: int = 50,
     ) -> dict:
-        require_database_job_store()
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         main._require_admin_actor_scope(actor)
         jobs = main.list_dead_jobs(limit=limit)
@@ -251,7 +206,6 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         job_id: str,
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> JobView:
-        require_database_job_store()
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         job = main.retry_dead_job(job_id, actor_username=actor)
         if not job:
@@ -270,7 +224,6 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         job_id: str,
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> Response:
-        require_database_job_store()
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         job = main.get_job(job_id)
         if not job or (job.actor_username and job.actor_username != actor):

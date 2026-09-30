@@ -154,16 +154,17 @@ def evaluate_runtime_preflight(
     report = RuntimePreflightReport()
     profile = str(deployment_profile or "").strip().lower().replace("-", "_")
     access_mode = str(data_access_mode or "database").strip().lower()
-    if profile in {"single_tenant_saas", "saas"}:
-        if access_mode != "database":
-            report.errors.append(
-                "SaaS deployment profile permits only OKR_DATA_ACCESS_MODE=database; "
-                f"received '{data_access_mode}'."
-            )
-        else:
-            report.infos.append(
-                "SaaS deployment profile is restricted to direct database access."
-            )
+    if access_mode != "database":
+        report.errors.append(
+            "Deployments permit only OKR_DATA_ACCESS_MODE=database; "
+            f"received '{data_access_mode}'. The former 'supabase_api' HTTPS mode was "
+            "removed; set OKR_DATA_ACCESS_MODE=database and configure "
+            "OKR_DATABASE_URL."
+        )
+    elif profile in {"single_tenant_saas", "saas"}:
+        report.infos.append(
+            "SaaS deployment profile is restricted to direct database access."
+        )
     method = _normalize_pdf_method(pdf_method)
     if method in {"chrome", "playwright"}:
         method = "chromium"

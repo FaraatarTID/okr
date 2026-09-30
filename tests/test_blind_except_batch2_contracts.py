@@ -13,70 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from src import audit
-from src.services import ai_provider, supabase_api_mode_transport as transport
-
-
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        ("7", 7),
-        (7.9, 7),
-        (None, 3),
-        ("abc", 3),
-        ([1], 3),
-        ({}, 3),
-        (float("inf"), 3),
-        (float("nan"), 3),
-    ],
-)
-def test_as_int_falls_back_for_unconvertible_values(value, expected):
-    assert transport._as_int(value, 3) == expected
-
-
-@pytest.mark.parametrize(
-    "value",
-    [None, "", "   ", "not a date", "2026-13-45", "2026-09-30T99:00:00"],
-)
-def test_parse_dt_returns_none_for_missing_or_invalid(value):
-    assert transport._parse_dt(value) is None
-
-
-def test_parse_dt_accepts_zulu_and_assumes_utc_for_naive():
-    zulu = transport._parse_dt("2026-09-30T06:10:00Z")
-    naive = transport._parse_dt("2026-09-30T06:10:00")
-
-    assert zulu is not None and zulu.utcoffset().total_seconds() == 0
-    assert naive is not None and naive.utcoffset().total_seconds() == 0
-
-
-@pytest.mark.parametrize(
-    "raw",
-    [None, "", "  ", "{not json", "[1, 2]", '"text"', "123", "[" * 5000],
-)
-def test_atlas_snapshot_fields_absorb_bad_stored_analysis(raw):
-    assert transport._atlas_extract_ai_snapshot_fields(raw) == (None, None)
-
-
-@pytest.mark.parametrize(
-    "score,expected",
-    [
-        (55, 55),
-        ("72.9", 72),
-        (150, 100),
-        (-5, 0),
-        ("x", None),
-        (None, None),
-        ([1], None),
-        ({}, None),
-    ]
-    + [(float("inf"), None), (float("nan"), None)],
-)
-def test_atlas_snapshot_score_is_clamped_or_dropped(score, expected):
-    import json
-
-    raw = json.dumps({"overall_score": score}, allow_nan=True)
-
-    assert transport._atlas_extract_ai_snapshot_fields(raw)[0] == expected
+from src.services import ai_provider
 
 
 def test_openai_non_json_body_is_reported_not_raised(monkeypatch):
@@ -177,5 +114,4 @@ def test_atlas_snapshot_deadline_state_is_language_independent(analysis, expecte
 
     raw = json.dumps(analysis, ensure_ascii=False)
 
-    assert transport._atlas_extract_ai_snapshot_fields(raw)[1] == expected
     assert _atlas_extract_ai_snapshot_fields(raw)[1] == expected

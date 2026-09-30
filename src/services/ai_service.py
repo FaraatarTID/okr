@@ -8,7 +8,6 @@ from __future__ import annotations
 import os
 import json
 import logging
-import types
 from typing import Optional, Dict, Any
 from datetime import datetime
 from dotenv import load_dotenv
@@ -98,7 +97,7 @@ def _fetch_node_for_analysis(
     node_type: str,
     actor_username: Optional[str] = None,
 ):
-    """Try direct PostgreSQL first; fall back to Supabase REST API (HTTPS 443)."""
+    """Load the node for analysis from PostgreSQL; return an error dict on failure."""
     from src.crud import get_node
 
     try:
@@ -107,178 +106,14 @@ def _fetch_node_for_analysis(
             return {"error": f"Node {node_id} ({node_type}) not found"}
         return node
     except Exception as direct_err:
-        logger.warning(
-            "Direct DB fetch failed for %s %s: %s — trying REST API fallback",
-            node_type,
-            node_id,
-            direct_err,
-        )
-
-    try:
-        from src.services.supabase_api_mode import (
-            is_supabase_api_mode_enabled,
-        )
-
-        if not is_supabase_api_mode_enabled():
-            raise RuntimeError("Supabase REST API not configured; cannot fall back.")
-
-        rest_result = _fetch_node_via_rest(node_id, node_type, actor_username)
-        if rest_result is None:
-            return {"error": f"Node {node_id} ({node_type}) not found"}
-        return rest_result
-    except Exception as rest_err:
         logger.error(
-            "REST API fallback also failed for %s %s: %s",
-            node_type,
-            node_id,
-            rest_err,
+            "Database fetch failed for %s %s: %s", node_type, node_id, direct_err
         )
-        return {"error": f"Node fetch failed (direct + REST): {rest_err}"}
-
-
-def _fetch_node_via_rest(
-    node_id: int, node_type: str, actor_username: Optional[str] = None
-):
-    """Fetch a node via Supabase REST API and return a lightweight namespace object.
-
-    The returned namespace must satisfy every attribute access that
-    ``_analyze_node_inner`` performs on ORM instances, including the parent
-    chain (objective -> goal -> cycle) and check_ins, because the analysis
-    code traverses those relations after the fetch session has closed.
-    """
-    from src.services.supabase_api_mode import _rest_select
-
-    table_map = {
-        "GOAL": "goal",
-        "OBJECTIVE": "objective",
-        "KEY_RESULT": "key_result",
-        "KEYRESULT": "key_result",
-        "TASK": "task",
-    }
-    table = table_map.get(node_type)
-    if not table:
-        return None
-
-    status, rows = _rest_select(
-        table,
-        query={"id": f"eq.{node_id}", "select": "*"},
-    )
-    if status >= 400 or not rows:
-        return None
-    row = rows[0]
-
-    child_table_map = {
-        "GOAL": ("objective", "goal_id"),
-        "OBJECTIVE": ("key_result", "objective_id"),
-        "KEY_RESULT": ("task", "key_result_id"),
-        "KEYRESULT": ("task", "key_result_id"),
-        "TASK": (None, None),
-    }
-    child_table, fk_col = child_table_map.get(node_type, (None, None))
-
-    children = []
-    if child_table and fk_col:
-        _, child_rows = _rest_select(
-            child_table,
-            query={fk_col: f"eq.{node_id}", "select": "*"},
-        )
-        children = child_rows or []
-
-    child_attr_map = {
-        "GOAL": "objectives",
-        "OBJECTIVE": "key_results",
-        "KEY_RESULT": "tasks",
-        "KEYRESULT": "tasks",
-        "TASK": "work_logs",
-    }
-    child_attr = child_attr_map.get(node_type, "children")
-
-    ns = types.SimpleNamespace(**row)
-    setattr(ns, child_attr, [_simple_namespace_from_row(c) for c in children])
-    ns.__tablename__ = table.upper()
-
-    # Populate relations the analysis code expects but REST rows don't carry.
-    _populate_rest_relations(ns, node_type)
-
-    return ns
-
-
-def _populate_rest_relations(ns, node_type: str) -> None:
-    """Fill in parent-chain and check_ins attributes on a REST namespace.
-
-    Mirrors what eager loading provides on the direct-DB path so detached
-    attribute traversal in the analysis code never raises.
-    """
-    normalized = str(node_type or "").upper()
-
-    def _fetch_one(table: str, row_id):
-        if row_id is None:
-            return None
-        try:
-            from src.services.supabase_api_mode import _rest_select
-
-            status, rows = _rest_select(
-                table, query={"id": f"eq.{row_id}", "select": "*"}
-            )
-            if status < 400 and rows:
-                return types.SimpleNamespace(**rows[0])
-        except Exception as exc:
-            logger.debug(
-                "REST relation fetch failed for %s #%s: %s", table, row_id, exc
-            )
-        return None
-
-    if normalized in ("KEY_RESULT", "KEYRESULT"):
-        objective = _fetch_one("objective", getattr(ns, "objective_id", None))
-        ns.objective = objective
-        if objective is not None:
-            goal = _fetch_one("goal", getattr(objective, "goal_id", None))
-            objective.goal = goal
-            if goal is not None:
-                goal.cycle = _fetch_one("cycle", getattr(goal, "cycle_id", None))
-        # Check-ins used for prompt history; tolerate missing tables.
-        try:
-            from src.services.supabase_api_mode import _rest_select
-
-            _, ci_rows = _rest_select(
-                "check_in",
-                query={
-                    "key_result_id": f"eq.{getattr(ns, 'id', '')}",
-                    "select": "*",
-                },
-            )
-            ns.check_ins = [_simple_namespace_from_row(c) for c in (ci_rows or [])]
-        except Exception as exc:
-            logger.debug("REST check_ins fetch failed: %s", exc)
-            ns.check_ins = []
-    elif normalized == "OBJECTIVE":
-        goal = _fetch_one("goal", getattr(ns, "goal_id", None))
-        ns.goal = goal
-        if goal is not None:
-            goal.cycle = _fetch_one("cycle", getattr(goal, "cycle_id", None))
-    elif normalized == "GOAL":
-        ns.cycle = _fetch_one("cycle", getattr(ns, "cycle_id", None))
-
-
-def _simple_namespace_from_row(row: dict):
-    """Convert a REST API row dict to a SimpleNamespace with __tablename__."""
-    ns = types.SimpleNamespace(**row)
-    if "title" in row:
-        table = (
-            "task"
-            if "deadline" in row and "key_result_id" in row
-            else (
-                "key_result"
-                if "target_value" in row
-                else ("objective" if "goal_id" in row else "goal")
-            )
-        )
-        ns.__tablename__ = table
-    return ns
+        return {"error": f"Node fetch failed: {direct_err}"}
 
 
 def _fetch_recent_worklog_summaries(task_id: int) -> list:
-    """Try direct DB first for WorkLog summaries; fall back to REST API."""
+    """Return up to five recent WorkLog summaries; empty when the read fails."""
     try:
         from src.database import get_session_context
         from sqlmodel import col, select
@@ -297,34 +132,7 @@ def _fetch_recent_worklog_summaries(task_id: int) -> list:
         ]
     except Exception as direct_err:
         logger.debug(
-            "Direct DB worklog fetch failed for task %s: %s — trying REST API",
-            task_id,
-            direct_err,
-        )
-
-    try:
-        from src.services.supabase_api_mode import (
-            is_supabase_api_mode_enabled,
-            _rest_select,
-        )
-
-        if not is_supabase_api_mode_enabled():
-            return []
-        _, rows = _rest_select(
-            "work_log",
-            query={
-                "task_id": f"eq.{task_id}",
-                "select": "summary,start_time",
-                "order": "start_time.desc",
-                "limit": "5",
-            },
-        )
-        return [r["summary"] for r in rows if r.get("summary")]
-    except Exception as rest_err:
-        logger.debug(
-            "REST API worklog fallback also failed for task %s: %s",
-            task_id,
-            rest_err,
+            "Database worklog fetch failed for task %s: %s", task_id, direct_err
         )
         return []
 

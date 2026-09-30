@@ -15,7 +15,6 @@ from src.observability import (
     record_timing,
     timing_context,
 )
-from backend_app.data_access_mode import current_data_access_context
 from src.observability_metrics import (
     log_payload as build_observability_log_payload,
     record_api_request,
@@ -142,15 +141,8 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
 
         actor = request.headers.get("x-okr-actor")
         status_code = 500
-        from backend_app.data_access_mode import data_access_context
-
         with (
             timing_context(),
-            data_access_context(
-                actor=actor,
-                request_id=request_id,
-                correlation_id=correlation_id,
-            ),
             observability_context(correlation_id=correlation_id, request_id=request_id),
         ):
             try:
@@ -181,18 +173,13 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
                     )
             except Exception:
                 duration_ms = (time.perf_counter() - start_time) * 1000
-                data_access = current_data_access_context()
                 record_api_request(
                     method=request.method,
                     route=route,
                     status_code=500,
                     duration_ms=duration_ms,
                     actor=actor,
-                    strategy=data_access.effective_mode if data_access else None,
-                    fallback_reason=data_access.fallback_reason
-                    if data_access
-                    else None,
-                    resolver_state=data_access.resolver_state if data_access else None,
+                    strategy="database",
                 )
                 logger.exception(
                     build_observability_log_payload(
@@ -220,16 +207,13 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
                 response.headers["X-Request-ID"] = request_id
                 status_code = 500
         duration_ms = (time.perf_counter() - start_time) * 1000
-        data_access = current_data_access_context()
         record_api_request(
             method=request.method,
             route=route,
             status_code=status_code,
             duration_ms=duration_ms,
             actor=actor,
-            strategy=data_access.effective_mode if data_access else None,
-            fallback_reason=data_access.fallback_reason if data_access else None,
-            resolver_state=data_access.resolver_state if data_access else None,
+            strategy="database",
         )
         logger.info(
             build_observability_log_payload(

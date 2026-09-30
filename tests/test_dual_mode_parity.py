@@ -37,26 +37,17 @@ def _make_client(monkeypatch):
     return client, backend_main
 
 
-def _run_mutation_mode(
+def _run_mutation(
     *,
     client,
     backend_main,
     monkeypatch,
-    mode: bool,
     route: str,
     payload: dict,
     db_handler_name: str,
-    supabase_handler_name: str,
     db_handler,
-    supabase_handler,
     method: str = "post",
 ):
-    monkeypatch.setattr(
-        backend_main, "is_supabase_api_mode_enabled", lambda: bool(mode)
-    )
-    monkeypatch.setattr(
-        main_mutation_handlers, "is_supabase_api_mode_enabled", lambda: bool(mode)
-    )
     monkeypatch.setattr(
         backend_main, "_atomic_idempotent_check", lambda **_kwargs: None
     )
@@ -64,12 +55,6 @@ def _run_mutation_mode(
         backend_main, "_complete_idempotent_response", lambda **_kwargs: None
     )
     monkeypatch.setattr(backend_main, db_handler_name, db_handler, raising=False)
-    monkeypatch.setattr(
-        backend_main,
-        supabase_handler_name,
-        supabase_handler,
-        raising=False,
-    )
 
     method_norm = method.strip().lower()
     if method_norm == "patch":
@@ -98,7 +83,7 @@ def _goal_mutation_payload(
 
 
 @pytest.mark.parametrize(
-    ("route", "payload", "db_fn", "sup_fn", "expected_status"),
+    ("route", "payload", "db_fn", "expected_status"),
     [
         (
             "/v1/nodes/goal",
@@ -109,7 +94,6 @@ def _goal_mutation_payload(
                 "strategy_tags": ["Focus"],
             },
             "create_goal",
-            "create_goal_via_supabase_api",
             201,
         ),
         (
@@ -120,7 +104,6 @@ def _goal_mutation_payload(
                 "description": "Critical flow",
             },
             "create_objective",
-            "create_objective_via_supabase_api",
             201,
         ),
         (
@@ -133,7 +116,6 @@ def _goal_mutation_payload(
                 "unit": "%",
             },
             "create_key_result",
-            "create_key_result_via_supabase_api",
             201,
         ),
         (
@@ -145,7 +127,6 @@ def _goal_mutation_payload(
                 "estimated_minutes": 45,
             },
             "create_task",
-            "create_task_via_supabase_api",
             201,
         ),
         (
@@ -158,17 +139,15 @@ def _goal_mutation_payload(
                 "variation_type": "COMMON_CAUSE",
             },
             "create_check_in",
-            "create_check_in_via_supabase_api",
             201,
         ),
     ],
 )
-def test_dual_mode_critical_mutation_payload_parity(
+def test_critical_mutation_routes_dispatch_to_database_handler(
     monkeypatch,
     route,
     payload,
     db_fn,
-    sup_fn,
     expected_status,
 ):
     client, backend_main = _make_client(monkeypatch)
@@ -191,46 +170,23 @@ def test_dual_mode_critical_mutation_payload_parity(
             )
         return _goal_mutation_payload(updated_at=fixed_now, node_id=101)
 
-    def _supabase(**kwargs):
-        marker["calls"].append(("supabase", kwargs))
-        if route == "/v1/check-ins":
-            return _db(**kwargs)
-        return _goal_mutation_payload(updated_at=fixed_now, node_id=101)
-
-    db_response = _run_mutation_mode(
+    response = _run_mutation(
         client=client,
         backend_main=backend_main,
         monkeypatch=monkeypatch,
-        mode=False,
         route=route,
         payload=payload,
         db_handler_name=db_fn,
-        supabase_handler_name=sup_fn,
         db_handler=_db,
-        supabase_handler=_supabase,
-    )
-    sup_response = _run_mutation_mode(
-        client=client,
-        backend_main=backend_main,
-        monkeypatch=monkeypatch,
-        mode=True,
-        route=route,
-        payload=payload,
-        db_handler_name=db_fn,
-        supabase_handler_name=sup_fn,
-        db_handler=_db,
-        supabase_handler=_supabase,
     )
 
-    assert db_response.status_code == expected_status
-    assert db_response.status_code == sup_response.status_code
-    assert db_response.json() == sup_response.json()
-    assert marker["calls"][0][0] == "db"
-    assert marker["calls"][1][0] == "supabase"
+    assert response.status_code == expected_status
+    assert response.json()
+    assert [call[0] for call in marker["calls"]] == ["db"]
 
 
 @pytest.mark.parametrize(
-    ("route", "payload", "db_fn", "sup_fn", "expected_status", "method"),
+    ("route", "payload", "db_fn", "expected_status", "method"),
     [
         (
             "/v1/users",
@@ -244,7 +200,6 @@ def test_dual_mode_critical_mutation_payload_parity(
                 "team_id": 11,
             },
             "create_user",
-            "create_user_via_supabase_api",
             201,
             "post",
         ),
@@ -258,7 +213,6 @@ def test_dual_mode_critical_mutation_payload_parity(
                 "is_active": True,
             },
             "update_user",
-            "update_user_via_supabase_api",
             200,
             "patch",
         ),
@@ -269,18 +223,16 @@ def test_dual_mode_critical_mutation_payload_parity(
                 "require_change": True,
             },
             "reset_user_password",
-            "reset_user_password_via_supabase_api",
             200,
             "post",
         ),
     ],
 )
-def test_dual_mode_user_mutation_payload_parity(
+def test_user_mutation_routes_dispatch_to_database_handler(
     monkeypatch,
     route,
     payload,
     db_fn,
-    sup_fn,
     expected_status,
     method,
 ):
@@ -297,10 +249,6 @@ def test_dual_mode_user_mutation_payload_parity(
 
         def _db(**kwargs):
             marker["calls"].append(("db", kwargs))
-            return True
-
-        def _supabase(**kwargs):
-            marker["calls"].append(("supabase", kwargs))
             return True
     else:
 
@@ -320,66 +268,33 @@ def test_dual_mode_user_mutation_payload_parity(
         def _db(**kwargs):
             marker["calls"].append(("db", kwargs))
             role = getattr(kwargs.get("role"), "value", kwargs.get("role", "admin"))
-            user_id = 901 if "/v1/users/" in route else 901
-            return _user_obj(role, user_id=user_id)
-
-        def _supabase(**kwargs):
-            marker["calls"].append(("supabase", kwargs))
-            role = getattr(kwargs.get("role"), "value", kwargs.get("role", "admin"))
-            user_id = 901 if "/v1/users/" in route else 901
-            return _user_obj(role, user_id=user_id)
+            return _user_obj(role, user_id=901)
 
     monkeypatch.setattr(main_mutation_handlers, db_fn, _db, raising=False)
-    monkeypatch.setattr(main_mutation_handlers, sup_fn, _supabase, raising=False)
 
-    db_response = _run_mutation_mode(
+    response = _run_mutation(
         client=client,
         backend_main=backend_main,
         monkeypatch=monkeypatch,
-        mode=False,
         route=route,
         payload=payload,
         db_handler_name=db_fn,
-        supabase_handler_name=sup_fn,
         db_handler=_db,
-        supabase_handler=_supabase,
-        method=method,
-    )
-    sup_response = _run_mutation_mode(
-        client=client,
-        backend_main=backend_main,
-        monkeypatch=monkeypatch,
-        mode=True,
-        route=route,
-        payload=payload,
-        db_handler_name=db_fn,
-        supabase_handler_name=sup_fn,
-        db_handler=_db,
-        supabase_handler=_supabase,
         method=method,
     )
 
-    assert db_response.status_code == expected_status
-    assert db_response.status_code == sup_response.status_code
-    assert db_response.json() == sup_response.json()
-    assert marker["calls"][0][0] == "db"
-    assert marker["calls"][1][0] == "supabase"
+    assert response.status_code == expected_status
+    assert response.json()
+    assert [call[0] for call in marker["calls"]] == ["db"]
 
 
-# --- Read-query scope parity -------------------------------------------------
+# --- Read-query scope contract -----------------------------------------------
 #
-# The previous version of this test monkeypatched `read_query_via_supabase_api`
-# to *return the expected payload* and then asserted that payload, so its HTTPS
-# half could not fail, and it covered 2 of the 26 allowed kinds with an admin
-# scope. That is why a 13-kind scoping divergence between the two data paths
-# survived a file named for dual-mode parity.
+# These tests state the contract rather than the current behaviour:
 #
-# These tests state the contract instead of the current behaviour:
-#
-#   1. an unclassified read kind is refused in both modes, so a read kind added
-#      later cannot be served unscoped by omission (deny-by-default);
-#   2. a request naming a resource outside the actor's scope is refused in both
-#      modes, not just on the path that remembers to check.
+#   1. an unclassified read kind is refused, so a read kind added later cannot be
+#      served unscoped by omission (deny-by-default);
+#   2. a request naming a resource outside the actor's scope is refused.
 
 NON_ADMIN_SCOPE = {
     "is_admin": False,
@@ -391,7 +306,7 @@ NON_ADMIN_SCOPE = {
 
 # Kinds whose out-of-scope request must be refused outright. Row-filtered kinds
 # (`cycles.*`, `teams.*`) and self-scoped kinds (`ritual.snapshot`) are covered by
-# the payload-parity test below, because for those the correct behaviour is a
+# the payload tests below, because for those the correct behaviour is a
 # restricted 200 rather than a refusal.
 OUT_OF_SCOPE_REFUSALS: dict[str, dict] = {
     "audit.summary": {},
@@ -407,8 +322,8 @@ OUT_OF_SCOPE_REFUSALS: dict[str, dict] = {
     },
     "retros.user": {"user_id": 999},
     "retros.team": {"manager_id": 999},
-    # `krs.needing_checkin` authorizes `user_id` as a username on TCP before it
-    # reaches its cycle check; the HTTPS path checked neither.
+    # `krs.needing_checkin` authorizes `user_id` as a username before it reaches
+    # its cycle check.
     "krs.needing_checkin": {"cycle_id": 7, "user_id": "mallory"},
 }
 
@@ -421,22 +336,13 @@ OUT_OF_SCOPE_CYCLE_PARAMS: dict[str, dict] = {
     "krs.needing_checkin": {"cycle_id": 999, "user_id": "alice"},
 }
 
-MODES = ["database", "supabase_api"]
-
-# Kinds that name a cycle. Both paths must refuse a cycle the actor may not use.
+# Kinds that name a cycle. The read guard must refuse a cycle the actor may not use.
 CYCLE_ID_KINDS = [
     "krs.by_cycle",
     "tasks.by_cycle",
     "krs.needing_checkin",
     "experiments.for_retro_window",
 ]
-
-
-def _force_mode(monkeypatch, mode: str) -> None:
-    """Force the read path. `read_query_helpers` imports the resolver by name."""
-    import backend_app.read_query_helpers as read_query_helpers
-
-    monkeypatch.setattr(read_query_helpers, "resolve_read_mode", lambda: mode)
 
 
 def _non_admin_main(monkeypatch):
@@ -452,9 +358,7 @@ def _non_admin_main(monkeypatch):
 def test_read_scope_policy_covers_every_allowed_kind():
     """Deny-by-default structure: no readable kind may lack a scope rule.
 
-    This is the assertion that would have caught the divergence directly. Thirteen
-    kinds were readable with no rule governing who could read them, and every one
-    of them was reachable over HTTPS.
+    A readable kind with no rule governing who may read it would be served unscoped.
     """
     import backend_app.read_query_helpers as read_query_helpers
 
@@ -465,21 +369,17 @@ def test_read_scope_policy_covers_every_allowed_kind():
     assert allowed - policy == set(), "readable kinds with no declared actor scope"
 
 
-@pytest.mark.parametrize("mode", MODES)
-def test_newly_allowed_read_kind_without_a_scope_rule_is_refused(monkeypatch, mode):
+def test_newly_allowed_read_kind_without_a_scope_rule_is_refused(monkeypatch):
     """Deny-by-default: allow-listing a kind must not be enough to serve it.
 
-    This models the actual defect mechanism. The 13 divergent kinds were all in
-    `get_read_query_allowed_kinds()` and were therefore readable; what they lacked
-    was a scope rule. Passing `allowed_kinds` explicitly is how a future read kind
+    Kinds in `get_read_query_allowed_kinds()` are readable; what a kind must also
+    have is a scope rule. Passing `allowed_kinds` explicitly is how a future read kind
     enters the system, so it is the path the guard has to refuse.
     """
     import backend_app.read_query_helpers as read_query_helpers
     from fastapi import HTTPException
 
     backend_main = _non_admin_main(monkeypatch)
-    _force_mode(monkeypatch, mode)
-
     with pytest.raises(HTTPException) as excinfo:
         read_query_helpers.read_query_payload(
             kind="orders.by_user",
@@ -490,82 +390,6 @@ def test_newly_allowed_read_kind_without_a_scope_rule_is_refused(monkeypatch, mo
         )
 
     assert excinfo.value.status_code == 403
-
-
-def test_https_read_fails_closed_when_scope_resolution_returns_no_scope(monkeypatch):
-    """A missing HTTPS actor scope must not reach the upstream read dispatcher."""
-    import backend_app.read_query_helpers as read_query_helpers
-    from fastapi import HTTPException
-
-    backend_main = _non_admin_main(monkeypatch)
-    monkeypatch.setattr(read_query_helpers, "resolve_read_mode", lambda: "supabase_api")
-    monkeypatch.setattr(
-        read_query_helpers, "_validate_read_scope", lambda **_kwargs: None
-    )
-
-    def unexpected_dispatch(**_kwargs):
-        pytest.fail("HTTPS dispatcher received a request without an actor scope")
-
-    monkeypatch.setattr(
-        backend_main, "read_query_via_supabase_api", unexpected_dispatch
-    )
-
-    with pytest.raises(HTTPException) as excinfo:
-        read_query_helpers.read_query_payload(
-            kind="krs.by_cycle",
-            params={"cycle_id": 12},
-            actor="alice",
-            main=backend_main,
-        )
-
-    assert excinfo.value.status_code == 503
-    assert excinfo.value.detail == "Actor scope is unavailable."
-
-
-@pytest.mark.parametrize(
-    "scopes",
-    [
-        [None, {"owner_ids": {101}}],
-        [{"owner_ids": {101}}, None],
-    ],
-)
-def test_https_ritual_snapshot_fails_closed_without_both_scopes(monkeypatch, scopes):
-    """Neither snapshot authorization check may return no scope before RPC dispatch."""
-    import backend_app.read_query_helpers as read_query_helpers
-    from fastapi import HTTPException
-
-    backend_main = _non_admin_main(monkeypatch)
-    monkeypatch.setattr(read_query_helpers, "resolve_read_mode", lambda: "supabase_api")
-    remaining_scopes = iter(scopes)
-    monkeypatch.setattr(
-        read_query_helpers,
-        "_validate_read_scope",
-        lambda **_kwargs: next(remaining_scopes),
-    )
-
-    def unexpected_dispatch(**_kwargs):
-        pytest.fail("snapshot RPC received a request without a complete actor scope")
-
-    monkeypatch.setattr(
-        backend_main, "read_query_via_supabase_api", unexpected_dispatch
-    )
-
-    with pytest.raises(HTTPException) as excinfo:
-        read_query_helpers.read_query_payload(
-            kind="ritual.snapshot",
-            params={
-                "cycle_id": 12,
-                "user_id": 101,
-                "date": "2026-09-26",
-                "window_start": "2026-09-19",
-                "window_end": "2026-09-26",
-            },
-            actor="alice",
-            main=backend_main,
-        )
-
-    assert excinfo.value.status_code == 503
-    assert excinfo.value.detail == "Actor scope is unavailable."
 
 
 def test_team_scope_excludes_rows_with_missing_team_id():
@@ -581,7 +405,7 @@ def test_team_scope_excludes_rows_with_missing_team_id():
 
 
 def test_teams_all_is_scoped_to_the_actors_membership(monkeypatch):
-    """A member sees their own team and not others (TCP branch)."""
+    """A member sees their own team and not others (database path)."""
     import backend_app.read_query_helpers as read_query_helpers
 
     backend_main = _non_admin_main(monkeypatch)
@@ -598,8 +422,6 @@ def test_teams_all_is_scoped_to_the_actors_membership(monkeypatch):
         "_serialize_team",
         lambda team: {"id": int(team.id), "name": str(team.name)} if team else None,
     )
-    _force_mode(monkeypatch, "database")
-
     payload = read_query_helpers.read_query_payload(
         kind="teams.all", params={}, actor="alice", main=backend_main
     )
@@ -622,8 +444,6 @@ def test_teams_by_id_hides_a_team_the_actor_does_not_belong_to(monkeypatch):
         "_serialize_team",
         lambda team: {"id": int(team.id), "name": str(team.name)} if team else None,
     )
-    _force_mode(monkeypatch, "database")
-
     payload = read_query_helpers.read_query_payload(
         kind="teams.by_id", params={"team_id": 8}, actor="alice", main=backend_main
     )
@@ -631,46 +451,13 @@ def test_teams_by_id_hides_a_team_the_actor_does_not_belong_to(monkeypatch):
     assert payload == {"team": None}
 
 
-@pytest.mark.parametrize(
-    ("scope", "expected_id"),
-    [
-        ({"is_admin": False, "team_id": 7, "owner_ids": {101}}, "eq.7"),
-        ({"is_admin": True, "team_id": 7, "owner_ids": {101}}, None),
-        ({"is_admin": False, "team_id": None, "owner_ids": {101}}, "eq.0"),
-    ],
-)
-def test_supabase_teams_all_constrains_the_query(monkeypatch, scope, expected_id):
-    """The scope is pushed into the REST query rather than applied after fetching
-    every team, so a non-member's request never reads the other teams at all."""
-    from src.services import supabase_api_mode_read as supabase_read
-
-    captured: dict = {}
-
-    def fake_rest_select(table, *, query=None, **kwargs):
-        captured["table"] = table
-        captured["query"] = dict(query or {})
-        return 200, []
-
-    monkeypatch.setattr(supabase_read, "_rest_select", fake_rest_select)
-
-    supabase_read.read_query_via_supabase_api(
-        kind="teams.all", params={}, actor="alice", scope=scope
-    )
-
-    assert captured["table"] == "team"
-    assert captured["query"].get("id") == expected_id
-
-
 @pytest.mark.parametrize("kind", CYCLE_ID_KINDS)
-@pytest.mark.parametrize("mode", MODES)
-def test_out_of_scope_cycle_is_refused_in_both_modes(monkeypatch, kind, mode):
-    """A cycle the actor may not use is refused on both paths, not just TCP.
+def test_out_of_scope_cycle_is_refused(monkeypatch, kind):
+    """A cycle the actor may not use is refused.
 
-    The HTTPS path performed no cycle validation at all, so a manager could ask for
-    `krs.by_cycle` on a cycle they do not own and receive its rows, while the TCP
-    branch refused the identical request. The resolver is stubbed rather than hit,
-    because what is under test is that the HTTPS guard consults the same resolver the
-    TCP branch uses, not that the resolver itself works.
+    The resolver is stubbed rather than hit, because what is under test is that the
+    read guard consults `_resolve_effective_cycle_id_for_scope`, not that the
+    resolver itself works.
     """
     import backend_app.read_query_helpers as read_query_helpers
     from fastapi import HTTPException
@@ -687,8 +474,6 @@ def test_out_of_scope_cycle_is_refused_in_both_modes(monkeypatch, kind, mode):
     monkeypatch.setattr(
         backend_main, "_resolve_effective_cycle_id_for_scope", fake_resolve
     )
-    _force_mode(monkeypatch, mode)
-
     with pytest.raises(HTTPException) as excinfo:
         read_query_helpers.read_query_payload(
             kind=kind,
@@ -724,15 +509,11 @@ HIDDEN_CYCLE_ID = 11
 
 @pytest.mark.parametrize("kind", ["cycles.all", "cycles.active"])
 @pytest.mark.parametrize("scope_fixture", ["manager", "member"])
-def test_cycles_are_row_filtered_identically_in_both_modes(
-    monkeypatch, kind, scope_fixture
-):
-    """`cycles.*` returns the same cycle set on both paths, not every cycle.
+def test_cycles_are_row_filtered_to_the_visible_set(monkeypatch, kind, scope_fixture):
+    """`cycles.*` returns only the cycles the actor may see, not every cycle.
 
-    The HTTPS branch filtered by nothing, so it returned every cycle in the table
-    while TCP returned only the visible ones. Asserting mode agreement alone would
-    pass vacuously if both returned everything, so the hidden cycle is asserted
-    absent as well.
+    The hidden cycle is asserted absent and the manager's visible set asserted non-empty,
+    so the manager case cannot pass vacuously.
     """
     import backend_app.read_query_helpers as read_query_helpers
 
@@ -751,84 +532,23 @@ def test_cycles_are_row_filtered_identically_in_both_modes(
         read_query_helpers, "serialize_cycle", lambda cycle: dict(cycle)
     )
 
-    def fake_supabase(*, kind, params, actor, scope):
-        rows = active if kind == "cycles.active" else cycles
-        return {"cycles": [dict(cycle) for cycle in rows]}
-
-    monkeypatch.setattr(
-        backend_main, "read_query_via_supabase_api", fake_supabase, raising=False
+    payload = read_query_helpers.read_query_payload(
+        kind=kind, params={}, actor="alice", main=backend_main
     )
+    database_ids = {row["id"] for row in payload["cycles"]}
 
-    def ids_for(mode):
-        _force_mode(monkeypatch, mode)
-        payload = read_query_helpers.read_query_payload(
-            kind=kind, params={}, actor="alice", main=backend_main
-        )
-        return {row["id"] for row in payload["cycles"]}
-
-    database_ids = ids_for("database")
-    supabase_ids = ids_for("supabase_api")
-
-    assert HIDDEN_CYCLE_ID not in database_ids, "TCP leaked a foreign cycle"
-    assert HIDDEN_CYCLE_ID not in supabase_ids, "HTTPS leaked a foreign cycle"
-    assert supabase_ids == database_ids
-
-
-def test_supabase_read_dispatch_is_always_scope_guarded():
-    """Static guard: only guarded dispatches may call the Supabase implementation.
-
-    The `ritual.snapshot` HTTPS fan-out used to call it directly for all five of its
-    sub-queries, skipping the actor-scope guard entirely for four of them. That was
-    pre-existing rather than introduced by the guard inversion, and it was bounded
-    rather than exploitable: the outer `weekly_plan.active` check applies the same
-    `user_id` predicate the sub-queries would have been checked against. It is fixed
-    because the next sub-query added to that fan-out would have been silently
-    unguarded, which is exactly how this class of defect works.
-
-    The only legitimate direct call is the `ritual.snapshot` RPC, which carries the
-    actor inside its parameters (`p_username`).
-    """
-    import re
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    source = (root / "backend_app" / "read_query_helpers.py").read_text(
-        encoding="utf-8"
-    )
-    call = re.compile(r"main\.read_query_via_supabase_api\s*\(")
-    unguarded: list[int] = []
-
-    for match in call.finditer(source):
-        depth, index = 1, match.end()
-        while index < len(source) and depth:
-            if source[index] == "(":
-                depth += 1
-            elif source[index] == ")":
-                depth -= 1
-            index += 1
-        arguments = source[match.end() : index]
-        if "scope=scope" in arguments or 'kind="ritual.snapshot"' in arguments:
-            continue
-        unguarded.append(source.count("\n", 0, match.start()) + 1)
-
-    assert unguarded == [], f"unguarded Supabase dispatch at line(s) {unguarded}"
+    if scope_fixture == "manager":
+        assert database_ids, "no cycle was returned"
+    assert HIDDEN_CYCLE_ID not in database_ids, "a foreign cycle leaked"
 
 
 @pytest.mark.parametrize("kind", sorted(OUT_OF_SCOPE_REFUSALS))
-@pytest.mark.parametrize("mode", MODES)
-def test_out_of_scope_read_is_refused_in_both_modes(monkeypatch, kind, mode):
-    """A non-admin naming someone else's resource is refused on both paths.
-
-    Before the guard inversion this held only on the TCP path and only for the
-    kinds the Supabase pre-dispatch guard happened to enumerate, so the same
-    request succeeded over HTTPS for `audit.summary`, `users.all` and
-    `users.team_members`.
-    """
+def test_out_of_scope_read_is_refused(monkeypatch, kind):
+    """A non-admin naming someone else's resource is refused."""
     import backend_app.read_query_helpers as read_query_helpers
     from fastapi import HTTPException
 
     backend_main = _non_admin_main(monkeypatch)
-    _force_mode(monkeypatch, mode)
 
     with pytest.raises(HTTPException) as excinfo:
         read_query_helpers.read_query_payload(
@@ -923,9 +643,8 @@ def test_task_scope_admin_sees_all_rows_without_evaluating_relationships():
 
 
 def test_tasks_by_cycle_owner_assignee_payload_parity(monkeypatch):
-    """Both read modes return owner and assignee rows, excluding foreign tasks."""
+    """The database read returns owner and assignee rows, excluding foreign tasks."""
     import backend_app.read_query_helpers as read_query_helpers
-    from src.services import supabase_api_mode_read as supabase_read
 
     backend_main = _non_admin_main(monkeypatch)
     monkeypatch.setattr(
@@ -1072,171 +791,16 @@ def test_tasks_by_cycle_owner_assignee_payload_parity(monkeypatch):
         backend_main, "get_all_tasks_by_cycle", lambda *_args, **_kwargs: database_rows
     )
 
-    def fake_rest_select(table, *, query=None):
-        if table == "goal":
-            return 200, [
-                {"id": 7, "owner_id": 101},
-                {"id": 8, "owner_id": 999},
-            ]
-        if table == "task":
-            return 200, [
-                {
-                    "id": 1,
-                    "key_result_id": 301,
-                    "title": "Owner visible",
-                    "description": None,
-                    "progress": 0,
-                    "status": "OPEN",
-                    "start_date": None,
-                    "deadline": None,
-                    "estimated_minutes": 0,
-                    "total_time_spent": 0,
-                    "timer_started_at": None,
-                    "assignee_id": 999,
-                    "created_at": None,
-                    "updated_at": None,
-                    "key_result": {
-                        "id": 301,
-                        "objective_id": 201,
-                        "title": "Owner KR",
-                        "description": None,
-                        "progress": 0,
-                        "start_value": 0,
-                        "target_value": 100,
-                        "current_value": 0,
-                        "unit": "%",
-                        "metric_type": "NUMERIC",
-                        "weight": 1,
-                        "initiative_tags": "[]",
-                        "state": "ACTIVE",
-                        "final_reflection": None,
-                        "ai_analysis": None,
-                        "created_at": None,
-                        "updated_at": None,
-                        "objective": {
-                            "id": 201,
-                            "goal_id": 7,
-                            "title": "Owner objective",
-                            "description": None,
-                            "progress": 0,
-                            "score_mode": "UNWEIGHTED",
-                            "weight": 1,
-                            "state": "ACTIVE",
-                            "final_reflection": None,
-                            "created_by": None,
-                            "created_at": None,
-                            "updated_at": None,
-                            "goal": {
-                                "id": 7,
-                                "title": "Owner goal",
-                                "description": None,
-                                "progress": 0,
-                                "owner_id": 101,
-                                "created_by": None,
-                                "cycle_id": 7,
-                                "strategy_tags": None,
-                                "created_at": None,
-                                "updated_at": None,
-                                "state": "ACTIVE",
-                            },
-                        },
-                    },
-                },
-                {
-                    "id": 2,
-                    "key_result_id": 302,
-                    "title": "Assignee visible",
-                    "description": None,
-                    "progress": 0,
-                    "status": "OPEN",
-                    "start_date": None,
-                    "deadline": None,
-                    "estimated_minutes": 0,
-                    "total_time_spent": 0,
-                    "timer_started_at": None,
-                    "assignee_id": 101,
-                    "created_at": None,
-                    "updated_at": None,
-                    "key_result": {
-                        "id": 302,
-                        "objective_id": 202,
-                        "title": "Assignee KR",
-                        "description": "sensitive KR description",
-                        "progress": 10,
-                        "start_value": 0,
-                        "target_value": 100,
-                        "current_value": 10,
-                        "unit": "%",
-                        "metric_type": "NUMERIC",
-                        "weight": 1,
-                        "initiative_tags": "[]",
-                        "state": "ACTIVE",
-                        "final_reflection": "sensitive reflection",
-                        "ai_analysis": "sensitive analysis",
-                        "objective": {
-                            "id": 202,
-                            "goal_id": 8,
-                            "title": "Assignee objective",
-                            "description": "sensitive objective description",
-                            "progress": 15,
-                            "score_mode": "UNWEIGHTED",
-                            "weight": 1,
-                            "state": "ACTIVE",
-                            "final_reflection": "sensitive objective reflection",
-                            "created_by": "sensitive creator",
-                            "created_at": None,
-                            "updated_at": None,
-                            "goal": {
-                                "id": 8,
-                                "title": "Assignee goal",
-                                "description": "sensitive goal description",
-                                "progress": 20,
-                                "owner_id": 999,
-                                "created_by": "sensitive goal creator",
-                                "cycle_id": 7,
-                                "strategy_tags": "sensitive tags",
-                                "created_at": None,
-                                "updated_at": None,
-                                "state": "ACTIVE",
-                            },
-                        },
-                    },
-                },
-                {
-                    "id": 3,
-                    "title": "Foreign",
-                    "assignee_id": 999,
-                    "key_result": {
-                        "id": 303,
-                        "title": "Foreign KR",
-                        "objective": {
-                            "id": 203,
-                            "goal_id": 9,
-                            "title": "Foreign objective",
-                            "goal": {"id": 9, "title": "Foreign goal"},
-                        },
-                    },
-                },
-            ]
-        raise AssertionError(f"unexpected table: {table}")
+    payload = read_query_helpers.read_query_payload(
+        kind="tasks.by_cycle",
+        params={"cycle_id": 7},
+        actor="alice",
+        main=backend_main,
+    )
 
-    monkeypatch.setattr(supabase_read, "_rest_select", fake_rest_select)
-
-    def payload_for(mode):
-        _force_mode(monkeypatch, mode)
-        return read_query_helpers.read_query_payload(
-            kind="tasks.by_cycle",
-            params={"cycle_id": 7},
-            actor="alice",
-            main=backend_main,
-        )
-
-    database_payload = payload_for("database")
-    https_payload = payload_for("supabase_api")
-
-    assert https_payload == database_payload
-    assert [task["id"] for task in https_payload["tasks"]] == [1, 2]
-    assigned = next(task for task in https_payload["tasks"] if task["id"] == 2)
+    assert [task["id"] for task in payload["tasks"]] == [1, 2]
+    assert [task["id"] for task in payload["tasks"]] == [1, 2]
+    assigned = next(task for task in payload["tasks"] if task["id"] == 2)
     assert assigned["key_result"]["title"] == "Assignee KR"
     assert assigned["key_result"]["objective"]["title"] == "Assignee objective"
     assert assigned["key_result"]["objective"]["goal"]["title"] == "Assignee goal"
@@ -1263,7 +827,6 @@ def test_tasks_by_cycle_owner_assignee_payload_parity(monkeypatch):
 
 def test_krs_by_cycle_owner_filter_payload_parity(monkeypatch):
     import backend_app.read_query_helpers as read_query_helpers
-    from src.services import supabase_api_mode_read as supabase_read
 
     backend_main = _non_admin_main(monkeypatch)
     monkeypatch.setattr(
@@ -1290,44 +853,20 @@ def test_krs_by_cycle_owner_filter_payload_parity(monkeypatch):
         lambda row, **_kwargs: {"__tablename__": "keyresult", "id": row.id},
     )
 
-    def fake_rest_select(table, *, query=None):
-        if table == "goal":
-            return 200, [
-                {"id": 7, "owner_id": 101},
-                {"id": 8, "owner_id": 999},
-                {"id": 9, "owner_id": 998},
-            ]
-        if table == "key_result":
-            assert query["objective.goal_id"] == "in.(7)"
-            return 200, [{"id": 1, "objective": {"goal_id": 7}}]
-        raise AssertionError(f"unexpected table: {table}")
-
-    monkeypatch.setattr(supabase_read, "_rest_select", fake_rest_select)
-    _force_mode(monkeypatch, "database")
     database_payload = read_query_helpers.read_query_payload(
         kind="krs.by_cycle",
         params={"cycle_id": 7},
         actor="alice",
         main=backend_main,
     )
-    _force_mode(monkeypatch, "supabase_api")
-    https_payload = read_query_helpers.read_query_payload(
-        kind="krs.by_cycle",
-        params={"cycle_id": 7},
-        actor="alice",
-        main=backend_main,
-    )
 
-    assert (
-        https_payload
-        == database_payload
-        == {"key_results": [{"__tablename__": "keyresult", "id": 1}]}
-    )
+    assert database_payload == {
+        "key_results": [{"__tablename__": "keyresult", "id": 1}]
+    }
 
 
 def test_krs_needing_checkin_scope_filter_payload_parity(monkeypatch):
     import backend_app.read_query_helpers as read_query_helpers
-    from src.services import supabase_api_mode_read as supabase_read
 
     backend_main = _non_admin_main(monkeypatch)
     monkeypatch.setattr(
@@ -1351,69 +890,25 @@ def test_krs_needing_checkin_scope_filter_payload_parity(monkeypatch):
         },
     )
 
-    def fake_rest_select(table, *, query=None):
-        if table == "user":
-            return 200, [{"id": 101}, {"id": 202}]
-        if table == "goal":
-            assert query["owner_id"] == "eq.101"
-            candidates = [
-                {"id": 7, "owner_id": 101},
-                {"id": 8, "owner_id": 202},
-            ]
-            return 200, [
-                row
-                for row in candidates
-                if f"eq.{row['owner_id']}" == query["owner_id"]
-            ]
-        if table == "objective":
-            assert query["goal_id"] == "in.(7)"
-            return 200, [{"id": 70, "goal_id": 7}]
-        if table == "key_result":
-            assert query["state"] == "eq.ACTIVE"
-            candidates = [
-                {"id": 1, "objective_id": 70, "state": "ACTIVE"},
-                {"id": 2, "objective_id": 70, "state": "INACTIVE"},
-                {"id": 3, "objective_id": 80, "state": "ACTIVE"},
-            ]
-            return 200, [
-                row
-                for row in candidates
-                if row["objective_id"] == 70 and row["state"] == "ACTIVE"
-            ]
-        if table == "check_in":
-            return 200, []
-        raise AssertionError(f"unexpected table: {table}")
-
-    monkeypatch.setattr(supabase_read, "_rest_select", fake_rest_select)
     params = {"cycle_id": 7, "user_id": "alice"}
-    _force_mode(monkeypatch, "database")
     database_payload = read_query_helpers.read_query_payload(
         kind="krs.needing_checkin", params=params, actor="alice", main=backend_main
     )
-    _force_mode(monkeypatch, "supabase_api")
-    https_payload = read_query_helpers.read_query_payload(
-        kind="krs.needing_checkin", params=params, actor="alice", main=backend_main
-    )
 
-    assert (
-        https_payload
-        == database_payload
-        == {
-            "key_results": [
-                {
-                    "__tablename__": "keyresult",
-                    "id": 1,
-                    "objective_id": 70,
-                    "state": "ACTIVE",
-                }
-            ]
-        }
-    )
+    assert database_payload == {
+        "key_results": [
+            {
+                "__tablename__": "keyresult",
+                "id": 1,
+                "objective_id": 70,
+                "state": "ACTIVE",
+            }
+        ]
+    }
 
 
 def test_experiments_for_retro_window_scope_filter_payload_parity(monkeypatch):
     import backend_app.read_query_helpers as read_query_helpers
-    from src.services import supabase_api_mode_read as supabase_read
 
     backend_main = _non_admin_main(monkeypatch)
     monkeypatch.setattr(
@@ -1432,43 +927,16 @@ def test_experiments_for_retro_window_scope_filter_payload_parity(monkeypatch):
         lambda row: {"id": row.id, "key_result_id": row.key_result_id},
     )
 
-    def fake_rest_select(table, *, query=None):
-        if table == "experiment":
-            return 200, [
-                {"id": 1, "key_result_id": 30},
-                {"id": 2, "key_result_id": 99},
-            ]
-        if table == "goal":
-            return 200, [{"id": 10, "owner_id": 101}]
-        if table == "objective":
-            return 200, [{"id": 20}]
-        if table == "key_result":
-            return 200, [{"id": 30}]
-        raise AssertionError(f"unexpected table: {table}")
-
-    monkeypatch.setattr(supabase_read, "_rest_select", fake_rest_select)
     params = {
         "cycle_id": 7,
         "window_start": "2026-01-01T00:00:00+00:00",
         "window_end": "2026-01-08T00:00:00+00:00",
     }
-    _force_mode(monkeypatch, "database")
     database_payload = read_query_helpers.read_query_payload(
         kind="experiments.for_retro_window",
         params=params,
         actor="alice",
         main=backend_main,
     )
-    _force_mode(monkeypatch, "supabase_api")
-    https_payload = read_query_helpers.read_query_payload(
-        kind="experiments.for_retro_window",
-        params=params,
-        actor="alice",
-        main=backend_main,
-    )
 
-    assert (
-        https_payload
-        == database_payload
-        == {"experiments": [{"id": 1, "key_result_id": 30}]}
-    )
+    assert database_payload == {"experiments": [{"id": 1, "key_result_id": 30}]}

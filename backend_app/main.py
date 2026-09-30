@@ -52,7 +52,6 @@ from backend_app.read_query_helpers import (
 from backend_app.response_scope_helpers import (
     _filter_tasks_for_scope,  # noqa: F401
     _node_owner_id,  # noqa: F401
-    _resolve_goal_owner_id_for_node_via_supabase,  # noqa: F401
     _require_allowed_user_id,  # noqa: F401
     _require_allowed_username,  # noqa: F401
     _serialize_cycle,  # noqa: F401
@@ -139,9 +138,6 @@ __all__ = [
     "import_database_backup",
     "get_bool_config",
     "run_ai_health_check",
-    "authenticate_user_detailed_via_supabase_api",
-    "build_atlas_scope_snapshot_via_supabase_api",
-    "get_leadership_metrics_via_supabase_api",
     "get_pdf_runtime_diagnostics",
     "build_atlas_scope_snapshot",
     "is_production_runtime",
@@ -215,22 +211,6 @@ from backend_app.main_mutation_handlers import (
     api_update_node,  # noqa: F401
     api_update_team,  # noqa: F401
     api_update_user,  # noqa: F401
-)
-from src.services.supabase_api_mode import (
-    authenticate_user_detailed_via_supabase_api,
-    build_atlas_scope_snapshot_via_supabase_api,
-    ensure_supabase_api_ready,
-    is_supabase_api_mode_enabled,
-    get_leadership_metrics_via_supabase_api,
-    create_goal_via_supabase_api,  # noqa: F401
-    create_objective_via_supabase_api,  # noqa: F401
-    create_key_result_via_supabase_api,  # noqa: F401
-    create_task_via_supabase_api,  # noqa: F401
-    create_check_in_via_supabase_api,  # noqa: F401
-    create_user_via_supabase_api,  # noqa: F401
-    read_query_via_supabase_api,  # noqa: F401
-    start_timer_via_supabase_api,  # noqa: F401
-    stop_timer_via_supabase_api,  # noqa: F401
 )
 from src.services.pdf_service import get_pdf_runtime_diagnostics
 from backend_app.main_app_bootstrap import build_main_app
@@ -406,8 +386,6 @@ def create_app() -> FastAPI:
     return build_main_app(
         logger=_LOGGER,
         main_module=sys.modules[__name__],
-        is_supabase_api_mode_enabled=is_supabase_api_mode_enabled,
-        ensure_supabase_api_ready=ensure_supabase_api_ready,
         init_database=_bootstrap_init_database,
         ensure_admin_exists=_bootstrap_ensure_admin_exists,
         validate_runtime_preflight=validate_runtime_preflight,
