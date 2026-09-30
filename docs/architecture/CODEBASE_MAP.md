@@ -98,7 +98,6 @@ must be documented and covered by `scripts/check_import_boundaries.py`.
 
 - `src/services/ai_service.py` — Core AI analysis logic (`analyze_node`), prompt construction with cycle context, check-in history, experiments, parent context, and **alignment context** (edges + cross-hierarchy links). Has DB fallback (6543 → 443).
 - `src/services/ai_provider.py` — AI provider abstraction (Gemini, openai_compatible). Public aliases: `get_ai_api_key`, `get_ai_model`.
-- `src/services/supabase_api_mode.py` — Supabase REST API read/write operations. Includes timer stop with auto-computed task progress, alignment context queries, and cross-hierarchy link support.
 
 ## Alignment & Cross-Hierarchy Links
 

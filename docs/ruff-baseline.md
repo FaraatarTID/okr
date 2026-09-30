@@ -19,7 +19,7 @@ Status: `IN FORCE` from 2026-09-29. This is a ratchet, not a clean-up: existing 
 `S310`, `S506`, `S603`, `S607`). The first version of this page said 200 findings, 125 and 75; the committed baseline
 file said 200, 126 and 74, so that text was slightly off, and it has been recomputed from the file. Reviewed and
 removed on 2026-09-30: 20 findings in `backend_app/worker.py`, `backend_app/security_state.py` and `src/database.py`, then
-10 more in `src/audit.py`, `src/services/ai_provider.py` and `src/services/supabase_api_mode_transport.py` (see "What has been reviewed").
+10 more in `src/audit.py`, `src/services/ai_provider.py` and `src/services/supabase_api_mode_transport.py` (see "What has been reviewed"). `supabase_api_mode_transport.py` was removed on 2026-09-30 with the `supabase_api` mode; its findings no longer exist in the baseline.
 
 Two records describe the same thing and must agree: the per-file list in `[tool.ruff.lint.per-file-ignores]` and the
 per-file counts in [tests/ruff_baseline.json](../tests/ruff_baseline.json). The test fails if they differ.
@@ -69,8 +69,8 @@ Second batch, reviewed 2026-09-30 (10 `BLE001`), tests in
 
 | Where | Decision |
 |---|---|
-| `supabase_api_mode_transport.py` `_as_int`, `_parse_dt`, the two Atlas snapshot parsers | **Narrowed** to the exceptions the call can raise (`TypeError`, `ValueError`, `OverflowError`; `RecursionError` for stored JSON). `int(float("inf"))` raises `OverflowError`, which a narrower `(TypeError, ValueError)` would have let escape; a test fixes that. |
-| `supabase_api_mode_transport.py` HTTP client close | Kept, annotated: best-effort cleanup, logged, and the client is dropped either way. |
+| ~~`supabase_api_mode_transport.py` `_as_int`, `_parse_dt`, the two Atlas snapshot parsers~~ | **Removed 2026-09-30** (module deleted). Was: narrowed to the exceptions the call can raise (`TypeError`, `ValueError`, `OverflowError`; `RecursionError` for stored JSON). `int(float("inf"))` raises `OverflowError`, which a narrower `(TypeError, ValueError)` would have let escape; a test fixes that. |
+| ~~`supabase_api_mode_transport.py` HTTP client close~~ | **Removed 2026-09-30** (module deleted). Was: kept, annotated. |
 | `ai_provider.py` `response.json()` | **Narrowed** to `ValueError` (`requests`' decode error subclasses it). A test shows an `AttributeError` now surfaces instead of becoming an error value. |
 | `ai_provider.py` Gemini and OpenAI-compatible calls | Kept, annotated: the SDKs raise arbitrary types, and the failure is returned as redacted error text (see #210 in the plan). |
 | `audit.py` database sink | Kept, annotated; it already logged. |

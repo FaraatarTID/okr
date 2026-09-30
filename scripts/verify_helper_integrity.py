@@ -61,8 +61,6 @@ EXPECTED_CALLABLE_SIGNATURES: dict[Path, dict[str, list[str]]] = {
     },
     ROOT / "backend_app" / "main_bootstrap_helpers.py": {
         "make_main_lifespan": [
-            "is_supabase_api_mode_enabled",
-            "ensure_supabase_api_ready",
             "init_database",
             "ensure_admin_exists",
             "validate_runtime_preflight",

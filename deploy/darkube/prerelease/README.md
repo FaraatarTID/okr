@@ -227,7 +227,7 @@ Secret values must include the private `OKR_DATABASE_URL`,
 unless they are separately approved non-production credentials.
 
 Keep `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_ANON_KEY`
-empty in this SaaS-profile rehearsal. Do not add production backup, cloud
+empty: the app does not read them, and the SaaS profile rejects them if set. Do not add production backup, cloud
 admin, customer, or company-server credentials.
 
 Set component-specific values only from the repository's existing runtime

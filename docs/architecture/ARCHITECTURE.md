@@ -46,7 +46,7 @@ Primary data/control flow:
 
 - `spa-bff` -> `backend-api` read endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
 - Atlas snapshot/runtime reads and leadership read paths are backend-served.
-- In Supabase API mode, the Check-In ritual read uses the consolidated `ritual.snapshot` kind: a single `fn_ritual_snapshot` RPC (migration `y2d3e4f5a6b7`) returns key results, weekly plan, retrospectives, work logs, and experiments in one round trip, with automatic fallback to the legacy concurrent fan-out only when the RPC is missing (SQLSTATE 42883).
+- The Check-In ritual read uses the consolidated `ritual.snapshot` kind, served by the five-sub-query database path (key results, weekly plan, retrospectives, work logs, experiments). The `fn_ritual_snapshot` SQL function is not used by the app.
 
 4. Async heavy workflows:
 
@@ -75,16 +75,9 @@ Primary data/control flow:
   - Connection policy expects transaction pooler endpoint (`:6543`).
   - Runtime DSN should use a least-privilege app user (not `postgres`) except explicit break-glass overrides.
   - Postgres engine defaults to `NullPool` in app runtimes to align with Supabase PgBouncer transaction pooling.
-- Data-access mode resolution (`backend_app/data_access_mode.py`):
-  - In the `saas` deployment profile, only `OKR_DATA_ACCESS_MODE=database` is valid; startup rejects every other value.
-  - `OKR_DATA_ACCESS_MODE=supabase_api` is an alpha/self-hosted compatibility mode, not a SaaS architecture option.
-  - Otherwise TCP is primary; a cached probe re-checks connectivity every ~5 minutes.
-  - TCP unreachable + Supabase credentials present → reads fall back to the HTTPS API automatically (warn-once per outage); mutations never silently fail over (double-write risk) and fail closed.
-  - `notify_tcp_db_failure()` invalidates the probe cache so traffic returns to TCP quickly after recovery.
-- Transport resilience (`src/services/supabase_api_mode_transport.py`, HTTPS path):
-  - Process-wide concurrency semaphore (default 4; `OKR_SUPABASE_MAX_CONCURRENCY`) caps in-flight upstream calls.
-  - Circuit breaker opens after consecutive transport failures (default 5; `OKR_SUPABASE_BREAKER_THRESHOLD`) and fails fast for a cooldown (default 30s; `OKR_SUPABASE_BREAKER_COOLDOWN_S`), then half-open probes.
-  - Cached process-local HTTP client is closed on app shutdown via the FastAPI lifespan.
+- Data-access mode:
+  - Only `OKR_DATA_ACCESS_MODE=database` (direct SQLAlchemy/psycopg over Postgres through the pooler on `:6543`) exists; any other value stops startup with a preflight error.
+  - The `supabase_api` (HTTPS/REST) mode, its transport layer (concurrency semaphore, circuit breaker) and the TCP-to-HTTPS read fallback were removed on 2026-09-30. Reads and mutations run on the database path and fail closed; never add silent fallbacks.
 - Service boundary:
   - `backend-api` authenticates service calls using `OKR_BACKEND_SERVICE_TOKEN`.
   - Optional cryptographic request signing (`OKR_BACKEND_SIGNING_SECRET`) enforces signed/replay-protected internal calls.
@@ -200,7 +193,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - UI weekly check-in submits `create_check_in`.
 - CRUD creates `check_in`, updates KR value/progress, commits transaction.
 - `get_krs_needing_checkin` identifies stale/missing KR updates for the selected cycle.
-- The Check-In page loads its data via the consolidated `ritual.snapshot` read kind (`fn_ritual_snapshot` RPC in Supabase API mode), reducing latency versus per-section queries.
+- The Check-In page loads its data via the consolidated `ritual.snapshot` read kind (five sub-queries on the database path), reducing latency versus per-section queries.
 
 3. Progress and scoring flow
 
@@ -295,16 +288,14 @@ rollout state and is not part of this in-memory inventory.
 ## Contributor Decision Guide
 
 **Choosing a data path:**
-1. SaaS default: use CRUD/SQLAlchemy (TCP) through the transaction pooler. Do not set `OKR_DATA_ACCESS_MODE` to an HTTPS mode for SaaS.
-2. Reads work identically in both modes — dispatch is centralized in `backend_app/data_access_mode.py::resolve_read_mode()`; do not branch on mode ad hoc.
-3. Mutations always run on the active primary path and fail closed; never add silent fallbacks.
+1. Use CRUD/SQLAlchemy through the transaction pooler; this is the only data path (`OKR_DATA_ACCESS_MODE=database`).
+2. Mutations and reads run on that path and fail closed; never add silent fallbacks.
 
 **Adding a read kind (checklist):**
-1. Implement dispatch in `backend_app/read_query_helpers.py` (+ scope validation via `_validate_supabase_read_scope`).
-2. Add the HTTPS-mode query in `src/services/supabase_api_mode_read.py`.
-3. Register the kind in the allowed-kinds list and README's kinds enumeration.
-4. Add tests covering scope rejection + payload mapping (see `tests/test_ritual_snapshot_rpc.py` for the pattern).
-5. Regenerate all API artifacts: `just generate-api`.
+1. Implement dispatch in `backend_app/read_query_helpers.py` (+ scope validation via `_validate_read_scope`).
+2. Register the kind in the allowed-kinds list and README's kinds enumeration.
+3. Add tests covering scope rejection + payload mapping.
+4. Regenerate all API artifacts: `just generate-api`.
 
 **Adding a mutation route (checklist):**
 1. Add handler + route in `backend_app/routers/*_routes.py` behind `require_service_access`.

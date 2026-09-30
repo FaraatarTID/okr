@@ -525,9 +525,7 @@ Phase 4, because it needs a decision before it needs code.
   process-level TTL scope cache is added. **Not measured:** the PostgreSQL cost, where connection setup
   dominates (P0-1 note above). Revisit only with a PostgreSQL measurement showing the scope round-trips
   matter, and with invalidation on every account mutation, not on the version alone.
-- **P4.4, done.** [supabase-api-freeze.md](supabase-api-freeze.md) and
-  `tests/test_supabase_api_freeze.py`. Deprecation was approved by the repository owner on 2026-09-30, with no removal date:
-  the three questions that gate removal (who still runs the mode, a support date, a data migration path) are unanswered.
+- **P4.4, done, then superseded (2026-09-30).** The `supabase_api` mode was frozen (`supabase-api-freeze.md` and `tests/test_supabase_api_freeze.py`, both now deleted) and then removed entirely the same day with owner approval, because no environment used it. Only `OKR_DATA_ACCESS_MODE=database` exists.
 - **P4.5, partly done (2 of 5 modules); the remainder is deliberately not started (decided 2026-09-30).** `security.py` and `authentication.py` no longer reach `backend_app.main`
   (#198). Still reaching it: `main_runtime_helpers.py`, `main_workflow_handlers.py`, `main_mutation_handlers.py`, and
   every router through `main.<name>`. The facade cannot go while tests patch it: measured on 2026-09-30 by an AST scan, 201 `setattr(backend_main, "<name>", ...)`

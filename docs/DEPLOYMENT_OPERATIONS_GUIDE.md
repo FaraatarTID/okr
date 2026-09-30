@@ -69,14 +69,16 @@ crashed at startup with `LookupError: 'ADMIN' is not among the defined enum valu
 - The `backend_*` tables (nonce, rate limit, distributed state, idempotency) are not in
   the migrations. `backend_app/security_state.py` creates them on first use with row
   level security enabled and no `anon`/`authenticated` grants.
-- `supabase_api` mode writes uppercase role labels (`_role_for_storage`), so it does not
-  work against a schema built by the migrations. It is alpha/self-hosted compatibility
-  only; customer deployments use `database` mode.
-- `fn_activate_cycle` and `fn_ritual_snapshot` are Supabase RPC functions used only by
-  `supabase_api` mode. They are not part of the baseline migration, so a rebuilt schema
-  does not have them.
-- On the rebuilt demo database, tables created by the `okr_app` role carried no grants
-  for `anon`, `authenticated` or `service_role`, so PostgREST (and therefore
-  `supabase_api` mode) cannot read them. After any rebuild, run
+- The `supabase_api` HTTPS data-access mode was removed on 2026-09-30. It could not work
+  against a schema built by the migrations (it wrote uppercase role labels and needed
+  `service_role` grants and RPC functions the migrations never create). Only
+  `OKR_DATA_ACCESS_MODE=database` exists, and any other value stops startup.
+- An older hand-built database may still contain two unused SQL functions,
+  `fn_activate_cycle` and `fn_ritual_snapshot`. Nothing calls them. To remove them, list
+  the exact signatures first with `\df public.fn_activate_cycle` and
+  `\df public.fn_ritual_snapshot`, then run `DROP FUNCTION IF EXISTS` with the signature
+  shown. A database built by `alembic upgrade head` does not have them.
+- Tables created by the `okr_app` role carry no grants for `anon`, `authenticated`
+  or `service_role`, so PostgREST cannot read them. After any rebuild, run
   `python scripts/check_rls_enabled.py` against the database to confirm row level
   security is on and the PostgREST roles hold no grants.

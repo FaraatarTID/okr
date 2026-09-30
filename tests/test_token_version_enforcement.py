@@ -28,7 +28,6 @@ def test_tcp_scope_rejects_prior_version_after_account_bump(isolated_db, monkeyp
     import backend_app.scope_resolution as scopes
     from src.models import User
 
-    monkeypatch.setattr(scopes, "resolve_read_mode", lambda: "tcp")
     with Session(isolated_db) as session:
         session.add(User(username="alice", password_hash="unused", token_version=1))
         session.commit()
@@ -53,79 +52,6 @@ def test_tcp_scope_rejects_prior_version_after_account_bump(isolated_db, monkeyp
         scopes._resolve_scope_for_actor("alice", token_version=2)["actor_username"]
         == "alice"
     )
-
-
-def test_supabase_user_scope_rejects_stale_version_before_scoping(monkeypatch):
-    import backend_app.scope_resolution as scopes
-
-    current = {
-        "id": 7,
-        "username": "alice",
-        "is_active": True,
-        "role": "member",
-        "token_version": 2,
-    }
-
-    def read(*, kind, params, actor):
-        if kind == "users.all":
-            return {"users": [dict(current)]}
-        raise AssertionError(f"unexpected {kind}")
-
-    monkeypatch.setattr(scopes, "read_query_via_supabase_api", read)
-    assert (
-        scopes._resolve_actor_scope_via_supabase_api("alice", token_version=2)[
-            "actor_id"
-        ]
-        == 7
-    )
-    with pytest.raises(HTTPException) as stale:
-        scopes._resolve_actor_scope_via_supabase_api("alice", token_version=1)
-    assert stale.value.status_code == 401
-
-
-def test_supabase_user_scope_fails_closed_when_current_version_is_unavailable(
-    monkeypatch,
-):
-    import backend_app.scope_resolution as scopes
-
-    monkeypatch.setattr(
-        scopes,
-        "read_query_via_supabase_api",
-        lambda *, kind, params, actor: {
-            "users": [
-                {"id": 7, "username": "alice", "is_active": True, "role": "member"}
-            ]
-        },
-    )
-    with pytest.raises(HTTPException) as unavailable:
-        scopes._resolve_actor_scope_via_supabase_api("alice", token_version=1)
-    assert unavailable.value.status_code == 503
-
-
-@pytest.mark.parametrize("kind", ["users.all", "users.by_username"])
-def test_supabase_current_user_queries_include_token_version(monkeypatch, kind):
-    import src.services.supabase_api_mode_read as reads
-
-    selections = []
-
-    def select(table, *, query):
-        selections.append(query["select"])
-        return 200, [
-            {
-                "id": 7,
-                "username": "alice",
-                "is_active": True,
-                "role": "member",
-                "token_version": 2,
-            }
-        ]
-
-    monkeypatch.setattr(reads, "_rest_select", select)
-    reads.read_query_via_supabase_api(
-        kind=kind, params={"username": "alice"}, actor="alice"
-    )
-    assert len(selections) == 1
-    assert "token_version" in selections[0].split(",")
 
 
 def test_common_service_dependency_enforces_version_before_handler(monkeypatch):

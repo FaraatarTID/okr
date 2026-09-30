@@ -59,17 +59,6 @@ from src.models import (
     VariationType,
 )
 from src.serialization_helpers import _enum_value
-from src.services.supabase_api_mode import (
-    close_experiment_via_supabase_api,
-    create_alignment_via_supabase_api,
-    create_experiment_via_supabase_api,
-    create_retrospective_via_supabase_api,
-    create_weekly_plan_via_supabase_api,
-    delete_alignment_via_supabase_api,
-    is_supabase_api_mode_enabled,
-    upsert_retro_experiment_outcome_via_supabase_api,
-    update_experiment_via_supabase_api,
-)
 
 
 def _resolve_backend_main():
@@ -98,36 +87,20 @@ def api_create_check_in(
             detail="Special-cause check-ins require a special_cause_note.",
         )
     try:
-        if _resolve_backend_main().is_supabase_api_mode_enabled():
-            check_in = _resolve_backend_main().create_check_in_via_supabase_api(
-                kr_id=payload.kr_id,
-                value=payload.value,
-                confidence=payload.confidence,
-                comment=comment_text,
-                actor_username=actor,
-                variation_type=_coerce_enum(
-                    payload.variation_type,
-                    VariationType,
-                    field_name="variation_type",
-                ),
-                special_cause_note=special_cause_note or None,
-                experiment_id=payload.experiment_id,
-            )
-        else:
-            check_in = _resolve_backend_main().create_check_in(
-                kr_id=payload.kr_id,
-                value=payload.value,
-                confidence=payload.confidence,
-                comment=comment_text,
-                actor_username=actor,
-                variation_type=_coerce_enum(
-                    payload.variation_type,
-                    VariationType,
-                    field_name="variation_type",
-                ),
-                special_cause_note=special_cause_note or None,
-                experiment_id=payload.experiment_id,
-            )
+        check_in = _resolve_backend_main().create_check_in(
+            kr_id=payload.kr_id,
+            value=payload.value,
+            confidence=payload.confidence,
+            comment=comment_text,
+            actor_username=actor,
+            variation_type=_coerce_enum(
+                payload.variation_type,
+                VariationType,
+                field_name="variation_type",
+            ),
+            special_cause_note=special_cause_note or None,
+            experiment_id=payload.experiment_id,
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -157,36 +130,20 @@ def api_create_experiment(
     if replay:
         return _experiment_view_from_payload(replay)
     try:
-        if is_supabase_api_mode_enabled():
-            experiment = create_experiment_via_supabase_api(
-                key_result_id=payload.key_result_id,
-                cycle_id=payload.cycle_id,
-                hypothesis=payload.hypothesis,
-                change_description=payload.change_description,
-                actor_username=actor,
-                start_at=payload.start_at,
-                expected_effect_direction=_coerce_enum(
-                    payload.expected_effect_direction,
-                    ExpectedEffectDirection,
-                    field_name="expected_effect_direction",
-                ),
-                expected_effect_size=payload.expected_effect_size,
-            )
-        else:
-            experiment = _resolve_backend_main().create_experiment(
-                key_result_id=payload.key_result_id,
-                cycle_id=payload.cycle_id,
-                hypothesis=payload.hypothesis,
-                change_description=payload.change_description,
-                actor_username=actor,
-                start_at=payload.start_at,
-                expected_effect_direction=_coerce_enum(
-                    payload.expected_effect_direction,
-                    ExpectedEffectDirection,
-                    field_name="expected_effect_direction",
-                ),
-                expected_effect_size=payload.expected_effect_size,
-            )
+        experiment = _resolve_backend_main().create_experiment(
+            key_result_id=payload.key_result_id,
+            cycle_id=payload.cycle_id,
+            hypothesis=payload.hypothesis,
+            change_description=payload.change_description,
+            actor_username=actor,
+            start_at=payload.start_at,
+            expected_effect_direction=_coerce_enum(
+                payload.expected_effect_direction,
+                ExpectedEffectDirection,
+                field_name="expected_effect_direction",
+            ),
+            expected_effect_size=payload.expected_effect_size,
+        )
     except PermissionError as exc:
         _audit_experiment_failure(
             action="create_failed",
@@ -264,47 +221,24 @@ def api_update_experiment(
         return _experiment_view_from_payload(replay)
 
     try:
-        if is_supabase_api_mode_enabled():
-            # Validate transition before update if status is changing
-            if "status" in updates:
-                from src.services.supabase_api_mode import (
-                    get_experiment_via_supabase_api,
+        # Validate transition before update if status is changing
+        if "status" in updates:
+            with get_session_context() as session:
+                current = session.exec(
+                    select(Experiment).where(Experiment.id == int(experiment_id))
+                ).first()
+            if current:
+                current_status = _coerce_enum(
+                    getattr(current, "status", None),
+                    ExperimentStatus,
+                    field_name="current_status",
                 )
-
-                current = get_experiment_via_supabase_api(
-                    experiment_id=int(experiment_id)
-                )
-                if current:
-                    current_status = _coerce_enum(
-                        getattr(current, "status", None),
-                        ExperimentStatus,
-                        field_name="current_status",
-                    )
-                    _validate_experiment_transition(current_status, updates["status"])
-            experiment = update_experiment_via_supabase_api(
-                experiment_id=int(experiment_id),
-                actor_username=actor,
-                updates=updates,
-            )
-        else:
-            # Validate transition before update if status is changing
-            if "status" in updates:
-                with get_session_context() as session:
-                    current = session.exec(
-                        select(Experiment).where(Experiment.id == int(experiment_id))
-                    ).first()
-                if current:
-                    current_status = _coerce_enum(
-                        getattr(current, "status", None),
-                        ExperimentStatus,
-                        field_name="current_status",
-                    )
-                    _validate_experiment_transition(current_status, updates["status"])
-            experiment = _resolve_backend_main().update_experiment(
-                int(experiment_id),
-                actor_username=actor,
-                **updates,
-            )
+                _validate_experiment_transition(current_status, updates["status"])
+        experiment = _resolve_backend_main().update_experiment(
+            int(experiment_id),
+            actor_username=actor,
+            **updates,
+        )
     except PermissionError as exc:
         _audit_experiment_failure(
             action="update_failed",
@@ -374,28 +308,16 @@ def api_close_experiment(
         return _experiment_view_from_payload(replay)
 
     try:
-        if is_supabase_api_mode_enabled():
-            experiment = close_experiment_via_supabase_api(
-                experiment_id=int(experiment_id),
-                decision=_coerce_enum(
-                    payload.decision,
-                    ExperimentDecision,
-                    field_name="decision",
-                ),
-                rationale=payload.rationale,
-                actor_username=actor,
-            )
-        else:
-            experiment = _resolve_backend_main().close_experiment(
-                experiment_id=int(experiment_id),
-                decision=_coerce_enum(
-                    payload.decision,
-                    ExperimentDecision,
-                    field_name="decision",
-                ),
-                rationale=payload.rationale,
-                actor_username=actor,
-            )
+        experiment = _resolve_backend_main().close_experiment(
+            experiment_id=int(experiment_id),
+            decision=_coerce_enum(
+                payload.decision,
+                ExperimentDecision,
+                field_name="decision",
+            ),
+            rationale=payload.rationale,
+            actor_username=actor,
+        )
     except PermissionError as exc:
         _audit_experiment_failure(
             action="close_failed",
@@ -452,24 +374,14 @@ def api_create_retrospective(
             status_code=400, detail="cycle_id is required for retrospective."
         )
     try:
-        if is_supabase_api_mode_enabled():
-            retro = create_retrospective_via_supabase_api(
-                user_id=payload.user_id,
-                cycle_id=int(cycle_id),
-                week_start_date=payload.week_start_date,
-                content=payload.content,
-                sentiment=payload.sentiment,
-                actor_username=actor,
-            )
-        else:
-            retro = _resolve_backend_main().create_retrospective(
-                user_id=payload.user_id,
-                cycle_id=int(cycle_id),
-                week_start_date=payload.week_start_date,
-                content=payload.content,
-                sentiment=payload.sentiment,
-                actor_username=actor,
-            )
+        retro = _resolve_backend_main().create_retrospective(
+            user_id=payload.user_id,
+            cycle_id=int(cycle_id),
+            week_start_date=payload.week_start_date,
+            content=payload.content,
+            sentiment=payload.sentiment,
+            actor_username=actor,
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -489,30 +401,17 @@ def api_upsert_retro_experiment_outcome(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
     try:
-        if is_supabase_api_mode_enabled():
-            outcome = upsert_retro_experiment_outcome_via_supabase_api(
-                retrospective_id=int(retrospective_id),
-                experiment_id=payload.experiment_id,
-                decision=_coerce_enum(
-                    payload.decision,
-                    ExperimentDecision,
-                    field_name="decision",
-                ),
-                rationale=payload.rationale,
-                actor_username=actor,
-            )
-        else:
-            outcome = _resolve_backend_main().upsert_retro_experiment_outcome(
-                retrospective_id=int(retrospective_id),
-                experiment_id=payload.experiment_id,
-                decision=_coerce_enum(
-                    payload.decision,
-                    ExperimentDecision,
-                    field_name="decision",
-                ),
-                rationale=payload.rationale,
-                actor_username=actor,
-            )
+        outcome = _resolve_backend_main().upsert_retro_experiment_outcome(
+            retrospective_id=int(retrospective_id),
+            experiment_id=payload.experiment_id,
+            decision=_coerce_enum(
+                payload.decision,
+                ExperimentDecision,
+                field_name="decision",
+            ),
+            rationale=payload.rationale,
+            actor_username=actor,
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -531,30 +430,16 @@ def api_create_weekly_plan(
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
-    if backend_main.is_supabase_api_mode_enabled():
-        scope = backend_main._resolve_scope_for_actor(actor)
-        backend_main._require_allowed_user_id(scope, int(payload.user_id))
     try:
-        if backend_main.is_supabase_api_mode_enabled():
-            plan = create_weekly_plan_via_supabase_api(
-                user_id=payload.user_id,
-                start_date=payload.start_date,
-                end_date=payload.end_date,
-                p1=payload.p1,
-                p2=payload.p2,
-                p3=payload.p3,
-                actor_username=actor,
-            )
-        else:
-            plan = backend_main.create_weekly_plan(
-                user_id=payload.user_id,
-                start_date=payload.start_date,
-                end_date=payload.end_date,
-                p1=payload.p1,
-                p2=payload.p2,
-                p3=payload.p3,
-                actor_username=actor,
-            )
+        plan = backend_main.create_weekly_plan(
+            user_id=payload.user_id,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            p1=payload.p1,
+            p2=payload.p2,
+            p3=payload.p3,
+            actor_username=actor,
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -578,20 +463,12 @@ def api_create_alignment(
         field_name="alignment_type",
     )
     try:
-        if is_supabase_api_mode_enabled():
-            edge = create_alignment_via_supabase_api(
-                parent_id=payload.parent_id,
-                child_id=payload.child_id,
-                alignment_type=str(_enum_value(alignment_type)),
-                actor_username=actor,
-            )
-        else:
-            edge = _resolve_backend_main().create_alignment(
-                parent_id=payload.parent_id,
-                child_id=payload.child_id,
-                alignment_type=str(_enum_value(alignment_type)),
-                actor_username=actor,
-            )
+        edge = _resolve_backend_main().create_alignment(
+            parent_id=payload.parent_id,
+            child_id=payload.child_id,
+            alignment_type=str(_enum_value(alignment_type)),
+            actor_username=actor,
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -608,15 +485,9 @@ def api_delete_alignment(
 ) -> AlignmentDeleteResponse:
     actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
     try:
-        if is_supabase_api_mode_enabled():
-            deleted = delete_alignment_via_supabase_api(
-                edge_id=int(edge_id),
-                actor_username=actor,
-            )
-        else:
-            deleted = _resolve_backend_main().delete_alignment(
-                int(edge_id), actor_username=actor
-            )
+        deleted = _resolve_backend_main().delete_alignment(
+            int(edge_id), actor_username=actor
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:

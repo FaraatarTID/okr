@@ -15,7 +15,6 @@ from src.services.app_shell_runtime import (
     serialize_user,
     serialize_weekly_plan,
 )
-from src.services.supabase_api_mode import read_query_via_supabase_api
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -406,79 +405,6 @@ def _require_allowed_user_id(scope: dict[str, Any], user_id: int) -> None:
         raise HTTPException(status_code=403, detail="Actor is not authorized.")
 
 
-def _read_node_row_via_supabase(
-    *, node_type: str, node_id: int, actor: str
-) -> dict[str, Any] | None:
-    payload = read_query_via_supabase_api(
-        kind="node.get",
-        params={
-            "node_type": str(node_type or "").strip().upper(),
-            "node_id": int(node_id),
-        },
-        actor=actor,
-    )
-    row = (payload or {}).get("node")
-    return dict(row) if isinstance(row, dict) else None
-
-
-def _resolve_goal_owner_id_for_node_via_supabase(
-    *, node_type: str, node_id: int, actor: str
-) -> int | None:
-    normalized = str(node_type or "").strip().upper()
-    node = _read_node_row_via_supabase(
-        node_type=normalized, node_id=int(node_id), actor=actor
-    )
-    if not node:
-        return None
-
-    if normalized == "GOAL":
-        owner_id = node.get("owner_id")
-        return int(owner_id) if owner_id is not None else None
-
-    if normalized == "OBJECTIVE":
-        goal_id = node.get("goal_id")
-        if goal_id is None:
-            return None
-        goal = _read_node_row_via_supabase(
-            node_type="GOAL", node_id=int(goal_id), actor=actor
-        )
-        if not goal:
-            return None
-        owner_id = goal.get("owner_id")
-        return int(owner_id) if owner_id is not None else None
-
-    if normalized == "KEY_RESULT":
-        objective_id = node.get("objective_id")
-        if objective_id is None:
-            return None
-        objective = _read_node_row_via_supabase(
-            node_type="OBJECTIVE", node_id=int(objective_id), actor=actor
-        )
-        if not objective:
-            return None
-        goal_id = objective.get("goal_id")
-        if goal_id is None:
-            return None
-        goal = _read_node_row_via_supabase(
-            node_type="GOAL", node_id=int(goal_id), actor=actor
-        )
-        if not goal:
-            return None
-        owner_id = goal.get("owner_id")
-        return int(owner_id) if owner_id is not None else None
-
-    if normalized == "TASK":
-        key_result_id = node.get("key_result_id")
-        if key_result_id is None:
-            return None
-        return _resolve_goal_owner_id_for_node_via_supabase(
-            node_type="KEY_RESULT",
-            node_id=int(key_result_id),
-            actor=actor,
-        )
-    return None
-
-
 def _require_allowed_username(scope: dict[str, Any], username: str) -> None:
     allowed = {str(value) for value in (scope.get("usernames") or set())}
     if bool(scope.get("is_admin", False)):
@@ -553,8 +479,6 @@ __all__ = [
     "_node_owner_id",
     "_serialize_node_for_type",
     "_require_allowed_user_id",
-    "_read_node_row_via_supabase",
-    "_resolve_goal_owner_id_for_node_via_supabase",
     "_require_allowed_username",
     "_task_goal_owner_in_scope",
     "_filter_tasks_for_scope",

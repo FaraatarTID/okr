@@ -281,41 +281,6 @@ def run_checks() -> int:
             "max_complexity": 1,
             "max_defs": 0,
         },
-        "src.services.supabase_api_mode.py": {
-            "module": "src.services.supabase_api_mode",
-            "path": "src/services/supabase_api_mode.py",
-            "required": [
-                "create_goal_via_supabase_api",
-                "create_objective_via_supabase_api",
-                "create_key_result_via_supabase_api",
-                "create_task_via_supabase_api",
-                "update_node_via_supabase_api",
-                "delete_node_via_supabase_api",
-                "is_supabase_api_mode_enabled",
-                "ensure_supabase_api_ready",
-                "_base_url",
-                "_api_key",
-                "_request_json",
-            ],
-            "required_thin_wrappers": [],
-            "required_seams": [
-                "src.services.supabase_api_mode_atlas",
-                "src.services.supabase_api_mode_read",
-                "src.services.supabase_api_mode_mutation",
-                "src.services.supabase_api_mode_nodes",
-                "src.services.supabase_api_mode_operations",
-                "src.services.supabase_api_mode_transport",
-            ],
-            "forbidden_patterns": [
-                " import psycopg2",
-                " import psycopg",
-                "import sqlmodel",
-                "session.",
-                "requests.request(",
-            ],
-            "max_complexity": 1,
-            "max_defs": 0,
-        },
     }
 
     issues: list[str] = []

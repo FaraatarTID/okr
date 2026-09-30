@@ -66,7 +66,6 @@ def test_api_create_cycle_forces_manager_to_own_cycle(monkeypatch):
             "actor_id": 20,
         },
     )
-    monkeypatch.setattr(handlers, "is_supabase_api_mode_enabled", lambda: False)
 
     def _create_cycle(**kwargs):
         captured.update(kwargs)
@@ -87,55 +86,3 @@ def test_api_create_cycle_forces_manager_to_own_cycle(monkeypatch):
     assert result.id == 101
     assert captured["actor_username"] == "manager"
     assert captured["owner_manager_id"] == 20
-
-
-def test_supabase_manager_scope_discovers_admin_ids_for_global_cycles(monkeypatch):
-    import backend_app.scope_resolution as scope_resolution
-
-    calls = []
-
-    def _read_query(*, kind, params, actor):
-        calls.append(kind)
-        if kind == "users.by_username":
-            return {
-                "user": {
-                    "id": 20,
-                    "username": "manager",
-                    "role": "manager",
-                    "is_active": True,
-                    "manager_id": None,
-                }
-            }
-        if kind == "users.team_members":
-            return {"users": [{"id": 40, "username": "member", "is_active": True}]}
-        if kind == "users.all":
-            return {
-                "users": [
-                    {"id": 1, "username": "admin", "role": "admin", "is_active": True},
-                    {
-                        "id": 20,
-                        "username": "manager",
-                        "role": "manager",
-                        "is_active": True,
-                    },
-                    {
-                        "id": 30,
-                        "username": "other",
-                        "role": "manager",
-                        "is_active": True,
-                    },
-                ]
-            }
-        raise AssertionError(f"Unexpected query kind: {kind}")
-
-    monkeypatch.setattr(scope_resolution, "read_query_via_supabase_api", _read_query)
-
-    scope = scope_resolution._resolve_actor_scope_via_supabase_api("manager")
-    visible = scope_resolution._visible_cycles_for_scope(
-        scope,
-        [_cycle(101, 1), _cycle(102, 20), _cycle(103, 30)],
-    )
-
-    assert scope["admin_ids"] == {1}
-    assert [cycle.id for cycle in visible] == [101, 102]
-    assert calls == ["users.all", "users.team_members"]

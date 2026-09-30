@@ -161,9 +161,17 @@ def _build_tree(username: str, cycle_id: int, kr_count: int = 1) -> None:
 
 
 @pytest.fixture()
-def read_path(measured_engine):
+def read_path(measured_engine, monkeypatch):
     """A client, a cycle, and an actor whose real role is known."""
     from fastapi.testclient import TestClient
+
+    import backend_app.security as backend_security
+
+    # Process-global in-memory rate-limit buckets must not carry over from earlier
+    # tests, or a bounded read is answered 429 instead of being measured.
+    monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS", "10000")
+    monkeypatch.setenv("OKR_BACKEND_PREAUTH_RATE_LIMIT_MAX_REQUESTS", "10000")
+    backend_security._reset_security_state_for_tests()
 
     from src.crud import create_cycle, create_user
 
@@ -503,11 +511,12 @@ def test_the_database_security_state_backend_is_visible_to_the_harness(
 #
 # It is the worst scope-resolution amplifier in the read path: it fans out into five
 # sub-queries that each re-validate, plus a `weekly_plan.active` validation, so the
-# pre-cache count was roughly 7-8 resolutions. But the kind cannot be exercised on this
-# fixture at all: in `database` mode it calls the `fn_ritual_snapshot` function, which
-# does not exist on SQLite, and the fallback path in `read_query_helpers.py` returns
-# HTTP 500 here (observed, not assumed). A budget test for it therefore needs a
-# Postgres-backed fixture; until one exists, P0-3 stays open with the amplification
+# pre-cache count was roughly 7-8 resolutions. It was not exercisable on this SQLite
+# fixture when this note was written: the kind then depended on a Postgres-only
+# `fn_ritual_snapshot` SQL function that SQLite does not have (observed then, and
+# not re-measured since the Supabase REST mode and its RPC path were removed). A
+# budget test for it needs to be re-verified against a Postgres-backed fixture; until
+# one exists, P0-3 stays open with the amplification
 # established by reading the code and *not* measured. Writing a test that skipped
 # itself would have converted "unmeasured" into "covered", which is the exact failure
 # this file exists to prevent.

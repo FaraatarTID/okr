@@ -466,8 +466,16 @@ def test_job_polling_query_budget_guard(isolated_db, monkeypatch):
 def test_performance_query_budgets_for_read_endpoints(isolated_db, monkeypatch):
     import backend_app.scope_resolution as scope_resolution
     import backend_app.main as backend_main
+    import backend_app.security as backend_security
     from src.crud import create_cycle, create_user
     from src.database import get_engine
+
+    # The in-memory rate-limit buckets are process-global; earlier tests in the same
+    # session can exhaust the shared test-client peer bucket and turn this read
+    # into a 429. Start from a clean, generous limit.
+    monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS", "10000")
+    monkeypatch.setenv("OKR_BACKEND_PREAUTH_RATE_LIMIT_MAX_REQUESTS", "10000")
+    backend_security._reset_security_state_for_tests()
 
     users = [create_user(f"metric_user{i}", "pass") for i in range(1, 3)]
     cycle = create_cycle(
@@ -508,7 +516,6 @@ def test_performance_query_budgets_for_read_endpoints(isolated_db, monkeypatch):
 
     # Keep the real dependency enabled; the test session is registered above and
     # is bound to the actor ID returned by this scope fixture.
-    monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: False)
     monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", _admin_scope)
     # The service dependency now calls scope_resolution directly, not the facade.
     monkeypatch.setattr(scope_resolution, "_resolve_scope_for_actor", _admin_scope)

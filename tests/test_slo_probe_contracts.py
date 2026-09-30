@@ -332,20 +332,3 @@ def test_job_probe_polls_string_job_id(monkeypatch) -> None:
 
     assert result[0]["pass"]
     assert calls[1][0] == "http://probe/api/backend/v1/jobs/job-uuid-1"
-
-
-def test_job_probe_skips_intentionally_unsupported_supabase_mode(monkeypatch) -> None:
-    monkeypatch.setattr(
-        slo_probe,
-        "_post_authenticated",
-        lambda *args, **kwargs: (503, {}, 0.01),
-    )
-
-    result = slo_probe._probe_job_queue_lag(
-        "http://probe",
-        "session=1",
-        data_access_mode="supabase_api",
-    )
-
-    assert result[0]["pass"] is True
-    assert "intentionally unavailable" in result[0]["detail"]

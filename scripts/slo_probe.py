@@ -717,19 +717,6 @@ def _probe_job_queue_lag(
         csrf_token=csrf_token,
     )
     if submit_status != 202:
-        if submit_status == 503 and data_access_mode == "supabase_api":
-            return [
-                {
-                    "slo": "SLO-4 job queue lag",
-                    "target_s": 60.0,
-                    "measured_s": 0.0,
-                    "pass": True,
-                    "detail": (
-                        "skipped: async job store is intentionally unavailable "
-                        "in supabase_api mode"
-                    ),
-                }
-            ]
         return [
             {
                 "slo": "SLO-4 job queue lag",

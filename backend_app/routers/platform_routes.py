@@ -31,11 +31,6 @@ from src.saas.identity_contract import enforce_enterprise_login_policy
 def register_platform_routes(router: APIRouter, main: Any) -> None:
     """Register platform-facing /auth, read-only, admin, and system routes."""
 
-    def _effective_read_mode() -> str:
-        from backend_app.data_access_mode import resolve_read_mode
-
-        return resolve_read_mode()
-
     async def _timed_service_access(
         request: Request,
         x_okr_actor: str | None = Header(default=None),
@@ -74,11 +69,6 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         response_model_exclude_unset=True,
     )
     def api_auth_login(request: Request, payload: LoginRequest) -> dict:
-        from backend_app.data_access_mode import (
-            notify_tcp_db_failure,
-            resolve_read_mode,
-        )
-
         username = str(payload.username or "").strip()
         # The IP dimension of the login throttle keys on the trusted client address
         # published by `require_service_access`, which this route already depends on, so
@@ -98,37 +88,11 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         except ValueError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
-        use_https = main.is_supabase_api_mode_enabled()
-        try:
-            if not use_https and resolve_read_mode() == "supabase_api":
-                # TCP unreachable but HTTPS available: probe scope resolution
-                # will have already failed over; auth follows the same path.
-                use_https = True
-            if use_https:
-                auth = main.authenticate_user_detailed_via_supabase_api(
-                    username=str(payload.username or "").strip(),
-                    password=payload.password,
-                    client_ip=client_ip,
-                )
-            else:
-                auth = main.authenticate_user_detailed(
-                    username=str(payload.username or "").strip(),
-                    password=payload.password,
-                    client_ip=client_ip,
-                )
-        except Exception:
-            if not use_https:
-                notify_tcp_db_failure()
-                if resolve_read_mode() == "supabase_api":
-                    auth = main.authenticate_user_detailed_via_supabase_api(
-                        username=str(payload.username or "").strip(),
-                        password=payload.password,
-                        client_ip=client_ip,
-                    )
-                else:
-                    raise
-            else:
-                raise
+        auth = main.authenticate_user_detailed(
+            username=str(payload.username or "").strip(),
+            password=payload.password,
+            client_ip=client_ip,
+        )
         output = dict(auth or {})
         output["user"] = serialize_user((auth or {}).get("user"))
         return output
@@ -146,29 +110,25 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         if not actor:
             raise HTTPException(status_code=401, detail="No active session.")
         token_version = int(x_okr_token_version) if x_okr_token_version else None
-        if main.is_supabase_api_mode_enabled():
-            scope = main._resolve_scope_for_actor(actor, token_version=token_version)
-            user_data = scope
-        else:
-            with main.get_session_context() as session:
-                main._resolve_actor_scope(session, actor, token_version=token_version)
-                user = session.exec(
-                    main.select(main.User).where(main.User.username == actor)
-                ).first()
-                if not user:
-                    raise HTTPException(status_code=401, detail="User not found.")
-                user_data = {
-                    "actor_id": user.id,
-                    "username": user.username,
-                    "display_name": getattr(user, "display_name", "") or "",
-                    "role": getattr(user, "role", "member"),
-                    "team_id": getattr(user, "team_id", None),
-                    "manager_id": getattr(user, "manager_id", None),
-                    "must_change_password": bool(
-                        getattr(user, "must_change_password", False)
-                    ),
-                    "token_version": getattr(user, "token_version", 1),
-                }
+        with main.get_session_context() as session:
+            main._resolve_actor_scope(session, actor, token_version=token_version)
+            user = session.exec(
+                main.select(main.User).where(main.User.username == actor)
+            ).first()
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found.")
+            user_data = {
+                "actor_id": user.id,
+                "username": user.username,
+                "display_name": getattr(user, "display_name", "") or "",
+                "role": getattr(user, "role", "member"),
+                "team_id": getattr(user, "team_id", None),
+                "manager_id": getattr(user, "manager_id", None),
+                "must_change_password": bool(
+                    getattr(user, "must_change_password", False)
+                ),
+                "token_version": getattr(user, "token_version", 1),
+            }
         return {
             "id": user_data.get("actor_id"),
             "username": actor,
@@ -191,11 +151,6 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         x_okr_actor: Optional[str] = Header(default=None),
         x_okr_token_version: Optional[str] = Header(default=None),
     ) -> dict:
-        from backend_app.data_access_mode import (
-            notify_tcp_db_failure,
-            resolve_read_mode,
-        )
-
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         token_version: Optional[int] = None
         if x_okr_token_version:
@@ -206,103 +161,29 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                     status_code=401, detail="Session is no longer valid."
                 ) from exc
 
-        use_https = main.is_supabase_api_mode_enabled()
         try:
-            if use_https:
-                main._resolve_scope_for_actor(actor, token_version=token_version)
-            else:
-                with main.get_session_context() as session:
-                    main._resolve_actor_scope(
-                        session, actor, token_version=token_version
-                    )
+            with main.get_session_context() as session:
+                main._resolve_actor_scope(session, actor, token_version=token_version)
         except HTTPException:
             raise
         except Exception as exc:
-            if not use_https:
-                notify_tcp_db_failure()
             raise HTTPException(
                 status_code=503, detail="Password change is temporarily unavailable."
             ) from exc
 
         client_ip = getattr(request.state, "trusted_client_ip", None)
 
-        def enforce_supabase_password_change_limit() -> None:
-            from backend_app.rate_limiter import check_rate_limit
-            from backend_app.security_state import SecurityStateUnavailableError
-            from src.domain.crud_contracts import (
-                AUTH_USER_MAX_ATTEMPTS,
-                AUTH_USER_WINDOW_SECONDS,
-            )
-
-            try:
-                allowed = check_rate_limit(
-                    key=f"password-change:user:{actor.strip().lower()}",
-                    limit=AUTH_USER_MAX_ATTEMPTS,
-                    window_seconds=AUTH_USER_WINDOW_SECONDS,
-                )
-            except SecurityStateUnavailableError as exc:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Password change is temporarily unavailable.",
-                ) from exc
-            if not allowed:
-                main.audit_log(
-                    "change_password",
-                    "user",
-                    actor=actor,
-                    details={
-                        "success": False,
-                        "reason": "rate_limited",
-                        "client_ip": client_ip,
-                    },
-                )
-                raise HTTPException(
-                    status_code=429,
-                    detail="Too many password change attempts. Try again later.",
-                )
-
-        if not use_https and resolve_read_mode() == "supabase_api":
-            use_https = True
-        if use_https:
-            enforce_supabase_password_change_limit()
-
         try:
-            if not use_https and resolve_read_mode() == "supabase_api":
-                use_https = True
-                enforce_supabase_password_change_limit()
-            if use_https:
-                auth = main.authenticate_user_detailed_via_supabase_api(
-                    username=actor,
-                    password=payload.current_password,
-                    client_ip=client_ip,
-                )
-            else:
-                auth = main.authenticate_user_detailed(
-                    username=actor,
-                    password=payload.current_password,
-                    client_ip=client_ip,
-                )
+            auth = main.authenticate_user_detailed(
+                username=actor,
+                password=payload.current_password,
+                client_ip=client_ip,
+            )
         except Exception as exc:
-            if not use_https:
-                notify_tcp_db_failure()
-                if resolve_read_mode() == "supabase_api":
-                    use_https = True
-                    enforce_supabase_password_change_limit()
-                    auth = main.authenticate_user_detailed_via_supabase_api(
-                        username=actor,
-                        password=payload.current_password,
-                        client_ip=client_ip,
-                    )
-                else:
-                    raise HTTPException(
-                        status_code=503,
-                        detail="Password change is temporarily unavailable.",
-                    ) from exc
-            else:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Password change is temporarily unavailable.",
-                ) from exc
+            raise HTTPException(
+                status_code=503,
+                detail="Password change is temporarily unavailable.",
+            ) from exc
 
         auth = dict(auth or {})
         error_code = str(auth.get("error_code") or "")
@@ -319,17 +200,6 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                     status_code=503,
                     detail="Password change is temporarily unavailable.",
                 )
-            if use_https:
-                main.audit_log(
-                    "change_password",
-                    "user",
-                    actor=actor,
-                    details={
-                        "success": False,
-                        "reason": "invalid_current_password",
-                        "client_ip": client_ip,
-                    },
-                )
             raise HTTPException(
                 status_code=401, detail="Current password is incorrect."
             )
@@ -338,37 +208,14 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         user_id = getattr(user, "id", None)
         if user_id is None or str(getattr(user, "username", "")) != actor:
             raise HTTPException(status_code=401, detail="Session is no longer valid.")
-        if use_https and token_version is not None:
-            try:
-                authenticated_version = int(getattr(user, "token_version"))
-            except (TypeError, ValueError):
-                raise HTTPException(
-                    status_code=401, detail="Session is no longer valid."
-                ) from None
-            if authenticated_version != token_version:
-                raise HTTPException(
-                    status_code=401, detail="Session is no longer valid."
-                )
 
         try:
-            if use_https:
-                from src.services.supabase_api_mode_operations import (
-                    reset_user_password_via_supabase_api,
-                )
-
-                updated = reset_user_password_via_supabase_api(
-                    user_id=int(user_id),
-                    new_password=payload.new_password,
-                    require_change=False,
-                    actor_username=actor,
-                )
-            else:
-                updated = main.reset_user_password(
-                    user_id=int(user_id),
-                    new_password=payload.new_password,
-                    require_change=False,
-                    actor_username=actor,
-                )
+            updated = main.reset_user_password(
+                user_id=int(user_id),
+                new_password=payload.new_password,
+                require_change=False,
+                actor_username=actor,
+            )
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except ValueError as exc:
@@ -381,19 +228,6 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
             ) from exc
         if not updated:
             raise HTTPException(status_code=404, detail="User not found.")
-        if use_https:
-            main.audit_log(
-                "change_password",
-                "user",
-                actor=actor,
-                details={
-                    "success": True,
-                    "user_id": int(user_id),
-                    "client_ip": client_ip,
-                },
-                target_type="user",
-                target_id=int(user_id),
-            )
         return {"updated": True}
 
     @router.post(
@@ -442,18 +276,14 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
 
     @router.get("/healthz")
     def healthz() -> dict:
-        from backend_app.data_access_mode import effective_mode_report
-
         try:
             dead_jobs = main.count_dead_jobs()
         except Exception:
             dead_jobs = None
         return {
             "status": "ok",
-            "data_access_mode": effective_mode_report(),
-            "configured_mode": (
-                "supabase_api" if main.is_supabase_api_mode_enabled() else "database"
-            ),
+            "data_access_mode": "database",
+            "configured_mode": "database",
             "dead_jobs": dead_jobs,
         }
 
@@ -659,13 +489,6 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                 )
             else:
                 owner_ids = sorted(allowed_owner_ids)
-        if _effective_read_mode() == "supabase_api":
-            return main.build_atlas_scope_snapshot_via_supabase_api(
-                cycle_id=int(cycle_id),
-                owner_ids=owner_ids,
-                include_analysis=bool(payload.include_analysis),
-                actor=actor,
-            )
         with main.get_session_context() as session:
             return main.build_atlas_scope_snapshot(
                 session,
@@ -711,10 +534,4 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
             )
         if not usernames:
             return {}
-        if _effective_read_mode() == "supabase_api":
-            return main.get_leadership_metrics_via_supabase_api(
-                usernames=list(usernames),
-                cycle_id=int(cycle_id),
-                actor=actor,
-            )
         return main.get_leadership_metrics(usernames, int(cycle_id))
