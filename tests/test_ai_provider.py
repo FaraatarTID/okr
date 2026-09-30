@@ -324,3 +324,57 @@ def test_run_ai_health_check_probe_failure(monkeypatch):
     report = run_ai_health_check(live_probe=True)
     assert report.get("status") == "probe_failed"
     assert report.get("probe_ok") is False
+
+
+def test_openai_compatible_call_carries_language_rule(monkeypatch):
+    _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("AI_BASE_URL", "http://localhost:11434")
+    monkeypatch.setenv("AI_MODEL", "llama3.1")
+    captured = {}
+    fake_response = SimpleNamespace(
+        status_code=200,
+        text='{"choices":[{"message":{"content":"{\\"ok\\": true}"}}]}',
+        json=lambda: {"choices": [{"message": {"content": '{"ok": true}'}}]},
+    )
+
+    def fake_post(*args, **kwargs):
+        captured["messages"] = kwargs["json_payload"]["messages"]
+        return fake_response
+
+    monkeypatch.setattr("src.services.ai_provider.post_json_with_retry", fake_post)
+
+    assert ai_provider._call_openai_compatible_json("hello").get("ok") is True
+
+    system = captured["messages"][0]
+    assert system["role"] == "system"
+    assert "Return valid JSON only" in system["content"]
+    assert ai_provider.LANGUAGE_INSTRUCTION in system["content"]
+    assert captured["messages"][1]["content"] == "hello"
+
+
+def test_gemini_call_carries_language_rule(monkeypatch):
+    _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    captured = {}
+
+    class _Models:
+        def generate_content(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(text='{"ok": true}')
+
+    class _Client:
+        def __init__(self, api_key):
+            self.models = _Models()
+
+    monkeypatch.setattr(ai_provider, "_GENAI_AVAILABLE", True)
+    monkeypatch.setattr(
+        ai_provider, "genai", SimpleNamespace(Client=_Client), raising=False
+    )
+
+    assert ai_provider._call_gemini_json("hello").get("ok") is True
+
+    assert captured["contents"] == "hello"
+    assert captured["config"]["response_mime_type"] == "application/json"
+    assert captured["config"]["system_instruction"] == ai_provider.LANGUAGE_INSTRUCTION

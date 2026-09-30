@@ -220,6 +220,7 @@ export default function useReportGeneration({
         "summary_markdown should be a concise executive summary in markdown.",
         "highlights should be an array of 3-7 short bullet points.",
         "focus_analysis should be one sentence about strategic vs tactical focus.",
+        "Write summary_markdown, highlights and focus_analysis in the same language as the task titles and log summaries in logs, not in English. Keep the JSON keys as written.",
         `report_mode=${mode}`,
         `window_start=${start.toISOString()}`,
         `window_end=${end.toISOString()}`,

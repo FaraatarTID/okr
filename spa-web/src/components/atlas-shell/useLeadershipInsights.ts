@@ -134,7 +134,17 @@ export default function useLeadershipInsights({
         },
         { completed: 0, on_track: 0, at_risk: 0, overdue: 0 },
       );
+      const atRiskKrTitles = (Array.isArray(metrics.at_risk) ? metrics.at_risk : [])
+        .map((row) => {
+          const item = (row || {}) as Record<string, unknown>;
+          return String(item.title || item.kr_title || "").trim();
+        })
+        .filter(Boolean)
+        .slice(0, 10);
       const teamData = {
+        // OKR text, so the coach answers in the language the items are written in.
+        cycle_title: cycleLabel,
+        at_risk_kr_titles: atRiskKrTitles,
         members: memberProgressData,
         total_with_deadline:
           deadlineAggregate.completed +
@@ -173,7 +183,7 @@ export default function useLeadershipInsights({
     } finally {
       setTeamCoachPending(false);
     }
-  }, [leadershipMetrics, loadLeadershipMetricsSnapshot, parsedCycleId, user]);
+  }, [cycleLabel, leadershipMetrics, loadLeadershipMetricsSnapshot, parsedCycleId, user]);
 
   const handleGenerateStrategyPulseSummary = useCallback(async (): Promise<void> => {
     if (!user || !parsedCycleId) {

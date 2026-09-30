@@ -576,12 +576,17 @@ def _atlas_extract_ai_snapshot_fields(
             ai_overall_score = max(0, min(100, int(float(score_raw))))
         except (TypeError, ValueError, OverflowError):
             ai_overall_score = None
-    warnings_list = analysis.get("deadline_warnings") or []
-    if isinstance(warnings_list, list) and warnings_list:
-        joined = " ".join(
-            str(item) for item in warnings_list if item is not None
-        ).lower()
-        ai_deadline_state = "overdue" if "overdue" in joined else "risk"
+    # See src/domain/read_queries.py: prefer the language-independent field.
+    state_raw = str(analysis.get("deadline_state") or "").strip().lower()
+    if state_raw in ("risk", "overdue"):
+        ai_deadline_state = state_raw
+    elif state_raw != "none":
+        warnings_list = analysis.get("deadline_warnings") or []
+        if isinstance(warnings_list, list) and warnings_list:
+            joined = " ".join(
+                str(item) for item in warnings_list if item is not None
+            ).lower()
+            ai_deadline_state = "overdue" if "overdue" in joined else "risk"
     return ai_overall_score, ai_deadline_state
 
 

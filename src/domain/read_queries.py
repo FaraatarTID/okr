@@ -41,12 +41,19 @@ def _atlas_extract_ai_snapshot_fields(raw_analysis):
         except Exception:
             ai_overall_score = None
 
-    warnings_list = analysis.get("deadline_warnings") or []
-    if isinstance(warnings_list, list) and warnings_list:
-        joined = " ".join(
-            str(item) for item in warnings_list if item is not None
-        ).lower()
-        ai_deadline_state = "overdue" if "overdue" in joined else "risk"
+    # `deadline_state` is language-independent. Warning text is written in the
+    # language of the OKR items, so searching it for the English word "overdue"
+    # would misclassify every non-English analysis as "risk".
+    state_raw = str(analysis.get("deadline_state") or "").strip().lower()
+    if state_raw in ("risk", "overdue"):
+        ai_deadline_state = state_raw
+    elif state_raw != "none":
+        warnings_list = analysis.get("deadline_warnings") or []
+        if isinstance(warnings_list, list) and warnings_list:
+            joined = " ".join(
+                str(item) for item in warnings_list if item is not None
+            ).lower()
+            ai_deadline_state = "overdue" if "overdue" in joined else "risk"
     return ai_overall_score, ai_deadline_state
 
 

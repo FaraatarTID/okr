@@ -799,22 +799,28 @@ def _analyze_node_inner(
     - A concrete deadline or timeframe
     - How it connects to the target KPI movement
 
-    Bad examples: "تعریف دقیق KPIها", "اجرای بازرسی پایه‌ای"
-    Good examples: "Set baseline KPI value to X and target to Y by [date], assigned to [role]", "Conduct root-cause analysis on blockers identified in sprint review by [date]"
+    Bad examples (too vague): "define the KPIs precisely", "run a baseline inspection"
+    Good examples (specific): "Set baseline KPI value to X and target to Y by [date], assigned to [role]", "Conduct root-cause analysis on blockers identified in sprint review by [date]"
+    Write proposed tasks in the same language as the node title, not in English.
 
     REQUIRED OUTPUT (JSON only):
     {{
         "efficiency_score": <number 0-100>,
         "effectiveness_score": <number 0-100>,
         "overall_score": <number 0-100>,
-        "deadline_warnings": ["<Something is overdue>", ...],
+        "deadline_state": "<none | risk | overdue>",
+        "deadline_warnings": ["<Something is overdue or at risk, in the language of the title>", ...],
         "gap_analysis": "<What is missing to reach 100% fulfillment, with specific next steps>",
         "quality_assessment": "<Critique of children quality, with concrete improvement suggestions>",
         "proposed_tasks": ["<Specific actionable task with owner and deadline>", ...],
         "summary": "<2 sentence executive summary>"
     }}
 
-    Match the language of the title. Return ONLY valid JSON.
+    LANGUAGE: write every text value (deadline_warnings, gap_analysis,
+    quality_assessment, proposed_tasks, summary) in the same language as the
+    title and description of the Target Node, NOT in English. Keep the JSON
+    keys and the "deadline_state" value (none | risk | overdue) exactly as
+    written. Return ONLY valid JSON.
     """
 
     data = _run_ai_json_prompt(prompt)
@@ -822,6 +828,7 @@ def _analyze_node_inner(
         return {"error": data.get("error")}
 
     return {
+        "deadline_state": data.get("deadline_state", ""),
         "efficiency_score": data.get("efficiency_score", 0),
         "effectiveness_score": data.get("effectiveness_score", 0),
         "overall_score": data.get("overall_score", 0),
@@ -854,6 +861,10 @@ def analyze_team_health(team_data: dict) -> dict:
     
     === TEAM HEALTH DATA ===
     
+    OKR CONTEXT (the language of these titles is the language of your answer):
+    - Cycle: "{_sanitize_for_prompt(str(team_data.get("cycle_title") or "N/A"))}"
+    - At-risk key results: {json.dumps([_sanitize_for_prompt(str(t)) for t in (team_data.get("at_risk_kr_titles") or [])[:10]], ensure_ascii=False)}
+
     TEAM COMPOSITION:
     {json.dumps(team_data.get("members", []), indent=2, ensure_ascii=False)}
     
@@ -892,7 +903,7 @@ def analyze_team_health(team_data: dict) -> dict:
         "dimensions": {{
             "productivity": {{
                 "score": <0-100>,
-                "status": "<🟢 Excellent | 🟡 Needs Attention | 🔴 Critical>",
+                "status": "<🟢 | 🟡 | 🔴 followed by a short status word in the data language>",
                 "insight": "<1-2 sentence observation>",
                 "action": "<Specific action the manager should take>"
             }},
@@ -908,8 +919,11 @@ def analyze_team_health(team_data: dict) -> dict:
     }}
     
     COACHING STYLE: Be direct but constructive. Use the manager's perspective.
-    Detect language from the data and respond in the SAME language.
-    Return ONLY valid JSON.
+    LANGUAGE: detect the language of the OKR content in the data (member and
+    objective titles, notes) and write EVERY text value (headline, status words,
+    insight, action, top_priorities, quick_wins, watch_out) in that language,
+    not in English. Keep the JSON keys and "health_grade" (A/B/C/D/F) as
+    written. Return ONLY valid JSON.
     """
 
     data = _run_ai_json_prompt(prompt)
@@ -965,7 +979,9 @@ def generate_predictive_outlook(
         "confidence_level": <0-100>
     }}
 
-    IMPORTANT: Match the language of the cycle title. Return ONLY valid JSON.
+    LANGUAGE: write outlook_summary, risk_mitigation and strategic_pivots in the
+    same language as the cycle title and the objective titles above, not in
+    English. Keep the JSON keys as written. Return ONLY valid JSON.
     """
 
     data = _run_ai_json_prompt(prompt)
