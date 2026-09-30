@@ -79,7 +79,7 @@ must be documented and covered by `scripts/check_import_boundaries.py`.
 
 1. Implement in `crud_*_helpers.py`.
 2. Wire through `crud.py` with backward-compatible signature.
-3. Validate authorization path and backend-proxy behavior.
+3. Validate the authorization path.
 4. Update authorization + regression tests.
 
 ### Add backend API endpoint

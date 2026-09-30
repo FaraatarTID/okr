@@ -53,8 +53,6 @@ def _build_env_lines(scenario: RuntimeScenario) -> list[str]:
         "BFF_SESSION_SECRET=runtime-smoke-bff-session-secret-very-long",
         "OKR_BOOTSTRAP_ADMIN_PASSWORD=RuntimeAdminPassword!2026",
         "OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true",
-        "OKR_BACKEND_PROXY_MUTATIONS=true",
-        "OKR_BACKEND_PROXY_READS=true",
         f"OKR_BACKEND_SECURITY_STATE_BACKEND={scenario.backend_security_state_backend}",
         f"OKR_BACKEND_BIND_ADDRESS={scenario.backend_bind_address}",
         "OKR_ALLOW_LOCAL_MUTATION_FALLBACK=false",

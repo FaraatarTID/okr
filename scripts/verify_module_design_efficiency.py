@@ -257,8 +257,6 @@ def run_checks() -> int:
                 "create_team",
                 "start_timer",
                 "authenticate_user_detailed",
-                "_backend_mutation_proxy_enabled",
-                "_backend_read_proxy_enabled",
                 "calculate_progress",
                 "create_retrospective",
                 "get_active_cycles",

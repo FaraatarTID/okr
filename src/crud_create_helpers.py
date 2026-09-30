@@ -6,7 +6,6 @@ import json
 from datetime import datetime
 from typing import Optional
 
-from src import crud_core_helpers
 from src.crud_utils import coerce_non_negative_weight
 
 
@@ -69,23 +68,6 @@ def create_goal_from_crud(
     strategy_tags: Optional[str] = None,
     actor_username: Optional[str] = None,
 ):
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_goal",
-        backend_kwargs={
-            "user_id": user_id,
-            "title": title,
-            "description": description,
-            "cycle_id": cycle_id,
-            "strategy_tags": strategy_tags,
-        },
-        actor_username=actor_username,
-        require_actor=False,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     if isinstance(strategy_tags, list):
         strategy_tags = json.dumps(
             [str(item).strip() for item in strategy_tags if str(item).strip()],
@@ -155,22 +137,6 @@ def create_objective_from_crud(
 ):
     if weight is not None:
         weight = coerce_non_negative_weight(weight, field_name="Objective weight")
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_objective",
-        backend_kwargs={
-            "goal_id": goal_id,
-            "title": title,
-            "description": description,
-            "weight": weight,
-        },
-        actor_username=actor_username,
-        require_actor=False,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         goal = session.get(crud_module.Goal, goal_id)
         if not goal:
@@ -240,25 +206,6 @@ def create_key_result_from_crud(
 ):
     if weight is not None:
         weight = coerce_non_negative_weight(weight, field_name="Key Result weight")
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_key_result",
-        backend_kwargs={
-            "objective_id": objective_id,
-            "title": title,
-            "description": description,
-            "target_value": target_value,
-            "unit": unit,
-            "initiative_tags": initiative_tags,
-            "weight": weight,
-        },
-        actor_username=actor_username,
-        require_actor=False,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     if isinstance(initiative_tags, list):
         initiative_tags = json.dumps(
             [str(item).strip() for item in initiative_tags if str(item).strip()],
@@ -335,25 +282,6 @@ def create_task_from_crud(
     assignee_id: Optional[int] = None,
     actor_username: Optional[str] = None,
 ):
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_task",
-        backend_kwargs={
-            "key_result_id": key_result_id,
-            "title": title,
-            "description": description,
-            "estimated_minutes": estimated_minutes,
-            "start_date": start_date,
-            "deadline": deadline,
-            "assignee_id": assignee_id,
-        },
-        actor_username=actor_username,
-        require_actor=False,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         parent_check = session.get(crud_module.KeyResult, key_result_id)
         if not parent_check:

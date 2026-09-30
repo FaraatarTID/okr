@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Optional
 
 from sqlmodel import col
-from src import crud_core_helpers
 from src.domain import analytics as domain_analytics
 from src.domain.progress import refresh_hierarchy_progress
 
@@ -22,25 +21,6 @@ def create_check_in_from_crud(
     special_cause_note: Optional[str] = None,
     experiment_id: Optional[int] = None,
 ):
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_check_in",
-        backend_kwargs={
-            "kr_id": kr_id,
-            "value": value,
-            "confidence": confidence,
-            "comment": comment,
-            "variation_type": variation_type,
-            "special_cause_note": special_cause_note,
-            "experiment_id": experiment_id,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         crud_module._authorize_node_mutation(
             session,

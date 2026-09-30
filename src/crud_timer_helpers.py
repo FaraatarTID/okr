@@ -6,7 +6,6 @@ from datetime import timedelta
 from typing import Optional
 
 from sqlmodel import col
-from src import crud_core_helpers
 from src.utils.time_utils import ensure_utc
 
 
@@ -376,17 +375,6 @@ def delete_work_log_from_crud(
     log_id: int,
     actor_username: Optional[str] = None,
 ) -> bool:
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="delete_work_log",
-        backend_kwargs={"work_log_id": log_id},
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="bool_deleted",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         work_log = session.get(crud_module.WorkLog, log_id)
         if work_log:

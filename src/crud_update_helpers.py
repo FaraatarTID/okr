@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from src.crud_core_helpers import try_backend_mutation
 from src.crud_utils import coerce_non_negative_weight
 from src.domain.lifecycle import validate_task_transition
 from src.domain.progress import calculate_objective_progress
@@ -29,21 +28,6 @@ def update_goal_from_crud(
     actor_username: Optional[str] = None,
     updates,
 ):
-    result = try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="update_node",
-        backend_kwargs={
-            "node_type": "GOAL",
-            "node_id": goal_id,
-            "updates": dict(updates or {}),
-        },
-        actor_username=actor_username,
-        require_actor=False,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     if isinstance(updates.get("strategy_tags"), list):
         updates["strategy_tags"] = json.dumps(
             [
@@ -101,21 +85,6 @@ def update_objective_from_crud(
     actor_username: Optional[str] = None,
     updates,
 ):
-    result = try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="update_node",
-        backend_kwargs={
-            "node_type": "OBJECTIVE",
-            "node_id": objective_id,
-            "updates": dict(updates or {}),
-        },
-        actor_username=actor_username,
-        require_actor=False,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         item = session.get(crud_module.Objective, objective_id)
         if item:
@@ -184,21 +153,6 @@ def update_key_result_from_crud(
     actor_username: Optional[str] = None,
     updates,
 ):
-    result = try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="update_node",
-        backend_kwargs={
-            "node_type": "KEY_RESULT",
-            "node_id": key_result_id,
-            "updates": dict(updates or {}),
-        },
-        actor_username=actor_username,
-        require_actor=False,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     if isinstance(updates.get("initiative_tags"), list):
         updates["initiative_tags"] = json.dumps(
             [
@@ -307,21 +261,6 @@ def update_task_from_crud(
         remote_updates["estimated_minutes"] = estimated_minutes
     if start_date is not crud_module._UNSET:
         remote_updates["start_date"] = start_date
-
-    result = try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="update_node",
-        backend_kwargs={
-            "node_type": "TASK",
-            "node_id": task_id,
-            "updates": remote_updates,
-        },
-        actor_username=actor_username,
-        require_actor=False,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
 
     with crud_module.get_session_context() as session:
         task = session.get(crud_module.Task, task_id)

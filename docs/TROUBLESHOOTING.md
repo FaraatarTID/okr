@@ -47,13 +47,8 @@ Runtime preflight shows configuration errors
   - Install Playwright package and Chromium browser runtime. In the backend image, Playwright is opt-in: rebuild with `--build-arg INSTALL_BROWSER_GROUP=true` and set `OKR_CHROMIUM_EXECUTABLE_PATH`. Locally, `uv sync --group browser` (or `--group dev`, which includes it).
 - If preflight says unsupported `PDF_METHOD`:
   - Change `PDF_METHOD` to `pdfshift` or `chromium`
-- If preflight says `OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set` even after changing secrets:
-  - Check the new `Config trace` info line in the UI; it shows effective value and source (`env`, `secrets_root`, `secrets_app`, `default`).
-  - In secrets TOML, prefer native booleans (avoid wrapping an entire block in quotes):
-    - `OKR_BACKEND_PROXY_MUTATIONS = false` (recommended)
-    - `OKR_BACKEND_PROXY_MUTATIONS = "false"` (works with current parser, but not preferred)
-    - `"PDF_METHOD = \"pdfshift\"\nOKR_BACKEND_PROXY_MUTATIONS=false"` (invalid TOML blob)
-  - Remove/adjust any conflicting environment variable override, then restart app process.
+- If preflight says `OKR_BACKEND_API_URL is required for backend-owned mutations` even after changing secrets:
+  - Remove/adjust any conflicting environment variable override, then restart the app process.
 - If strict mode is enabled (`OKR_STRICT_RUNTIME_PREFLIGHT=1`), app startup will stop on critical preflight errors until fixed.
 
 AI features unavailable
@@ -72,7 +67,7 @@ AI features unavailable
 
 CRUD save/update/delete errors in UI
 
-- If backend mutation proxy is enabled (`OKR_BACKEND_PROXY_MUTATIONS=true`):
+- In the standard deployment (`spa-bff` -> `backend-api`):
   - Verify `OKR_BACKEND_API_URL` resolves from `spa-web`/`spa-bff`
   - Verify `backend-api` is healthy (`/healthz`)
   - Verify `OKR_BACKEND_SERVICE_TOKEN` matches between services

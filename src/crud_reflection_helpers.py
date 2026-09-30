@@ -7,8 +7,6 @@ from typing import Optional
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import col
 
-from src import crud_core_helpers
-
 
 def create_weekly_plan_from_crud(
     *,
@@ -22,24 +20,6 @@ def create_weekly_plan_from_crud(
     actor_username: Optional[str] = None,
 ):
     actor_user = None
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_weekly_plan",
-        backend_kwargs={
-            "user_id": user_id,
-            "start_date": start_date,
-            "end_date": end_date,
-            "p1": p1,
-            "p2": p2,
-            "p3": p3,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     if not str(p1 or "").strip():
         raise ValueError("Priority #1 is required.")
     if start_date >= end_date:
@@ -52,8 +32,6 @@ def create_weekly_plan_from_crud(
                 actor_username=actor_username,
                 target_user_id=int(user_id),
             )
-        elif crud_module._backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
 
         statement = (
             crud_module.select(crud_module.WeeklyPlan)
@@ -151,23 +129,6 @@ def create_retrospective_from_crud(
     sentiment: Optional[str] = None,
     actor_username: Optional[str] = None,
 ):
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="create_retrospective",
-        backend_kwargs={
-            "user_id": user_id,
-            "cycle_id": cycle_id,
-            "week_start_date": week_start_date,
-            "content": content,
-            "sentiment": sentiment,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     if not str(content or "").strip():
         raise ValueError("Retrospective content is required.")
 
@@ -178,8 +139,6 @@ def create_retrospective_from_crud(
                 actor_username=actor_username,
                 target_user_id=int(user_id),
             )
-        elif crud_module._backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
 
         statement = (
             crud_module.select(crud_module.Retrospective)
@@ -250,22 +209,6 @@ def upsert_retro_experiment_outcome_from_crud(
     rationale: Optional[str],
     actor_username: str,
 ):
-    result = crud_core_helpers.try_backend_mutation(
-        crud_module=crud_module,
-        backend_fn_name="upsert_retro_experiment_outcome",
-        backend_kwargs={
-            "retrospective_id": retrospective_id,
-            "experiment_id": experiment_id,
-            "decision": decision,
-            "rationale": rationale,
-        },
-        actor_username=actor_username,
-        require_actor=True,
-        extract_result="node",
-    )
-    if result is not None:
-        return result
-
     with crud_module.get_session_context() as session:
         retro = session.get(crud_module.Retrospective, retrospective_id)
         if not retro:

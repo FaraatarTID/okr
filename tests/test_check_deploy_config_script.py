@@ -88,8 +88,6 @@ def _write_env(
         f"BFF_SESSION_SECRET={bff_session_secret}",
         f"OKR_BOOTSTRAP_ADMIN_PASSWORD={bootstrap_pw}",
         "OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true",
-        "OKR_BACKEND_PROXY_MUTATIONS=true",
-        "OKR_BACKEND_PROXY_READS=true",
         f"OKR_BACKEND_SECURITY_STATE_BACKEND={security_state_backend}",
         f"OKR_BACKEND_BIND_ADDRESS={backend_bind_address}",
         "OKR_ALLOW_LOCAL_MUTATION_FALLBACK=false",
@@ -242,25 +240,6 @@ def test_template_mode_rejects_unsecure_bff_cookie(tmp_path: Path):
 
     assert result.returncode == 1
     assert "BFF_COOKIE_SECURE" in result.stdout
-
-
-def test_template_mode_rejects_disabled_backend_read_proxy(tmp_path: Path):
-    env_file = tmp_path / ".env.example"
-    _write_env(env_file, placeholder_values=True)
-
-    lines = env_file.read_text(encoding="utf-8").splitlines()
-    lines = [
-        "OKR_BACKEND_PROXY_READS=false"
-        if line.startswith("OKR_BACKEND_PROXY_READS=")
-        else line
-        for line in lines
-    ]
-    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    result = _run_checker(env_file, mode="template")
-
-    assert result.returncode == 1
-    assert "OKR_BACKEND_PROXY_READS" in result.stdout
 
 
 def test_runtime_mode_rejects_non_loopback_backend_bind_address(tmp_path: Path):

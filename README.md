@@ -280,8 +280,8 @@ can start with [Start Here](#start-here).
 
 - Primary production design: `backend-api` + `backend-worker` + `spa-bff` + `spa-web`.
 - Streamlit runtime is retired from active deployment and launch paths.
-- Runtime behavior is backend-segregated: frontend reads/writes and heavy jobs are backend-owned (fail-closed on backend transport failure).
-- Corporate deployments (AWS/ECS/Kubernetes/VM) should follow [DEPLOYMENT.md](DEPLOYMENT.md), not embedded mode.
+- Runtime behavior is backend-segregated: `spa-bff` is the only client of `backend-api`; frontend reads/writes and heavy jobs are backend-owned (fail-closed on backend transport failure). There is no in-process Python HTTP client or embedded backend launcher.
+- Corporate deployments (AWS/ECS/Kubernetes/VM) should follow [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Workspace tooling
 
@@ -651,7 +651,6 @@ Success check (self-hosted):
 
 ## Security Defaults (Production)
 
-- Keep `OKR_BACKEND_PROXY_MUTATIONS=true`.
 - Keep backend API private (internal only).
 - Set a strong `OKR_BACKEND_SERVICE_TOKEN`.
 - Set a strong `OKR_BACKEND_SIGNING_SECRET`.

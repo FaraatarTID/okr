@@ -198,7 +198,7 @@ Both report types:
 - Export: PDF via `PDF_METHOD=pdfshift` or `PDF_METHOD=chromium`; if renderer is unavailable, HTML fallback is offered.
 
 Technical note:
-- In backend-segregated deployments, frontend read and write operations route through `backend-api` (`OKR_BACKEND_PROXY_MUTATIONS=true`, `OKR_BACKEND_PROXY_READS=true`) including node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments, and read-heavy Atlas/leadership queries.
+- In backend-segregated deployments, frontend read and write operations route through `backend-api` including node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments, and read-heavy Atlas/leadership queries.
 - Report AI/PDF generation runs through internal async jobs (`backend-api` + `backend-worker`).
 - If backend transport is unavailable, runtime behavior is fail-closed (no local mutation/read fallback execution).
 

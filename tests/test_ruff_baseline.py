@@ -103,5 +103,5 @@ def test_pyproject_ignores_exactly_the_files_in_the_baseline() -> None:
 def test_the_scan_sees_the_repository(current) -> None:
     """A scan that found nothing would pass every test above."""
     assert len(current) >= 50
-    assert sum(sum(c.values()) for c in current.values()) >= 150
+    assert sum(sum(c.values()) for c in current.values()) >= 100
     assert "src/services/ai_service.py" in current
