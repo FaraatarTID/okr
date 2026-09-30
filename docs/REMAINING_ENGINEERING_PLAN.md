@@ -564,6 +564,42 @@ Phase 4, because it needs a decision before it needs code.
     without a PostgreSQL test (for example JSON columns, `text[]`), were not exercised beyond the existing
     PostgreSQL suites.
 
+### Release signature verification record (2026-09-30)
+
+Ten builds published after `ef18d7f` had no signature check on record, because the Sigstore TUF mirror returns 403
+from the maintainer workstation. **Verify GHCR release signatures** (`verify-ghcr-signatures.yml`, already in the
+repository and run from GitHub, where the mirror is reachable) was dispatched for each, and every run succeeded.
+For each run the log shows `cosign verify` output for all three images (`web`, `bff`, `backend`), with the claims,
+transparency-log and certificate-chain checks reported, and no error lines.
+
+| Build | Verify run |
+|---|---|
+| `7bc79a4` | 36676819337 |
+| `24b7f8a` | 36676825930 |
+| `67fe6be` | 36676832387 |
+| `767713e` | 36676838877 |
+| `f463493` | 36676846502 |
+| `1d42188` | 36676852797 |
+| `bf8e2e7` | 36676859967 |
+| `ae86ed3` | 36676866965 |
+| `791504578937` (#205) | 36676874213 |
+| `bb622d4` (#206) | 36676881332 |
+
+What this shows: the digests recorded in each build's release manifest carry a signature from `publish-ghcr.yml` on
+`main`, issued by the GitHub Actions OIDC issuer. The workflow's digest guard also checks that each manifest image
+reference ends in the release SHA.
+
+What it does not show:
+
+- It verifies the digest in the manifest artifact, not that a running deployment uses that digest.
+- Builds before `ef18d7f` (`6150b4a`, `afd4837`, `5962df0`) were not re-run here.
+- The identity regexp accepts `main` or `master` on this repository; it does not pin a commit.
+- `ae86ed3` needed a rerun of the `web` job (a transient OIDC failure, see the retry in #206); its manifest was
+  assembled after the rerun and verifies.
+- The retry added in #206 has run only on the passing path so far. It has not met a real OIDC failure.
+
+To repeat it for a build: `gh workflow run verify-ghcr-signatures.yml -f release_sha=<full sha> -f manifest_run_id=<publish run id>`.
+
 ## Verification drills
 
 `docs/ARCHITECTURE_DELIVERY_SYSTEM.md` requires an item's purpose to be confirmed
