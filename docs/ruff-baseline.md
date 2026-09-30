@@ -15,11 +15,11 @@ Status: `IN FORCE` from 2026-09-29. This is a ratchet, not a clean-up: existing 
 
 ## The baseline
 
-180 findings in 68 files: 111 `BLE001` and 69 `S` findings (`S101`, `S104`, `S105`, `S106`, `S108`, `S110`, `S112`,
+170 findings in 65 files: 101 `BLE001` and 69 `S` findings (`S101`, `S104`, `S105`, `S106`, `S108`, `S110`, `S112`,
 `S310`, `S506`, `S603`, `S607`). The first version of this page said 200 findings, 125 and 75; the committed baseline
 file said 200, 126 and 74, so that text was slightly off, and it has been recomputed from the file. Reviewed and
-removed on 2026-09-30: 20 findings in `backend_app/worker.py`, `backend_app/security_state.py` and `src/database.py`
-(see "What has been reviewed").
+removed on 2026-09-30: 20 findings in `backend_app/worker.py`, `backend_app/security_state.py` and `src/database.py`, then
+10 more in `src/audit.py`, `src/services/ai_provider.py` and `src/services/supabase_api_mode_transport.py` (see "What has been reviewed").
 
 Two records describe the same thing and must agree: the per-file list in `[tool.ruff.lint.per-file-ignores]` and the
 per-file counts in [tests/ruff_baseline.json](../tests/ruff_baseline.json). The test fails if they differ.
@@ -37,10 +37,10 @@ The counts only move down. Never raise a count to make the test pass.
 
 ## What this does and does not claim
 
-- **The baseline is not an approval.** 97 of the remaining 111 blind excepts are outside tests (it was 112 before the review below). Apart from the files under What has been reviewed, they were listed, not reviewed.
+- **The baseline is not an approval.** 87 of the remaining 101 blind excepts are outside tests (it was 112 before the reviews below). Apart from the files under What has been reviewed, they were listed, not reviewed.
   Many are visibly fail-closed or best-effort by design (a failed `logger.debug` on shutdown, `return None` after a parse
   failure); some may hide a real error. Nobody has classified them.
-- **They were not annotated.** A reason on each `noqa` has to come from someone who has read the handler. Writing 111 reasons
+- **They were not annotated.** A reason on each `noqa` has to come from someone who has read the handler. Writing 101 reasons
   in bulk from the file names would produce text that looks reviewed and is not. The way to reduce the count is: when you touch
   a handler, either narrow the exception or add `# noqa: BLE001 - <why swallowing is right>`, then lower the baseline.
 - `S603`/`S607` in `scripts/` are subprocess calls with fixed argument lists, `S310` is `urllib` against configured URLs,
@@ -64,9 +64,23 @@ narrowed or carries a `# noqa: <code> - <reason>` that says what the swallow doe
 | `security_state.py` `dispose` (database) | Kept, best-effort shutdown. |
 | Four `S608` sites | Kept, annotated. Only module-built fragments (`key_clause`, `lock_clause`, a fixed tuple of table names, quoted table metadata) are spliced into the SQL; every value is a bound parameter. This is from reading the four call sites and their inputs, not a security audit. |
 
-What this does **not** claim: the other 111 blind excepts and 69 `S` findings have not been reviewed. One thing the review did
-not settle: `worker.py` logs the exception with a traceback but keeps the full text (`f"{type(exc).__name__}: {exc}"`) as the job's
-stored error. Whether job error text can carry sensitive data was not checked.
+Second batch, reviewed 2026-09-30 (10 `BLE001`), tests in
+[tests/test_blind_except_batch2_contracts.py](../tests/test_blind_except_batch2_contracts.py) (38 tests; 12 of 12 mutations killed):
+
+| Where | Decision |
+|---|---|
+| `supabase_api_mode_transport.py` `_as_int`, `_parse_dt`, the two Atlas snapshot parsers | **Narrowed** to the exceptions the call can raise (`TypeError`, `ValueError`, `OverflowError`; `RecursionError` for stored JSON). `int(float("inf"))` raises `OverflowError`, which a narrower `(TypeError, ValueError)` would have let escape; a test fixes that. |
+| `supabase_api_mode_transport.py` HTTP client close | Kept, annotated: best-effort cleanup, logged, and the client is dropped either way. |
+| `ai_provider.py` `response.json()` | **Narrowed** to `ValueError` (`requests`' decode error subclasses it). A test shows an `AttributeError` now surfaces instead of becoming an error value. |
+| `ai_provider.py` Gemini and OpenAI-compatible calls | Kept, annotated: the SDKs raise arbitrary types, and the failure is returned as redacted error text (see #210 in the plan). |
+| `audit.py` database sink | Kept, annotated; it already logged. |
+| `audit.py` actor lookup | Kept, annotated, and **no longer silent**: it returned empty identity with no log at all. It now warns once per process and keeps the traceback at debug. An audit event still gets written without an actor rather than failing. |
+
+What this does **not** claim: the other 101 blind excepts and 69 `S` findings have not been reviewed. The question this
+page used to leave open, whether stored job error text can carry sensitive data, was answered: it could, through a URL
+in a library exception, and it is fixed and tested (`redact_error_text`, see
+[REMAINING_ENGINEERING_PLAN.md](REMAINING_ENGINEERING_PLAN.md)).
+
 ## How to lower it
 
 Fix or annotate the finding, then lower its count for that file in **both** `tests/ruff_baseline.json` and the matching

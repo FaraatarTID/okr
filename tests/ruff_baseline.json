@@ -147,9 +147,6 @@
       "S506": 1,
       "S603": 1
     },
-    "src/audit.py": {
-      "BLE001": 2
-    },
     "src/crud_auth_helpers.py": {
       "BLE001": 1
     },
@@ -187,9 +184,6 @@
       "S101": 2,
       "S110": 1
     },
-    "src/services/ai_provider.py": {
-      "BLE001": 3
-    },
     "src/services/ai_service.py": {
       "BLE001": 13
     },
@@ -210,9 +204,6 @@
     },
     "src/services/supabase_api_mode_nodes.py": {
       "BLE001": 1
-    },
-    "src/services/supabase_api_mode_transport.py": {
-      "BLE001": 5
     },
     "src/utils/cache_utils.py": {
       "BLE001": 1
