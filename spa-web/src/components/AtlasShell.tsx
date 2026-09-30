@@ -927,9 +927,13 @@ export default function AtlasShell() {
     setSelectedRef("");
     setFocusTaskRef("");
   };
+  // A signed-in user who cannot manage cycles is redirected out of admin mode
+  // (see useShellAccessControl). Do not rewrite the URL while that is pending.
+  const adminRedirectPending = Boolean(user) && mode === "admin" && !canManageCycleSelection;
   useDeepLinkCycleBootstrap({
     user,
     canManageCycleSelection,
+    suspendUrlSync: adminRedirectPending,
     parsedCycleId,
     resolvedCycle,
     sessionCycles,

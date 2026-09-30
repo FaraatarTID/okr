@@ -383,6 +383,45 @@ describe("useDeepLinkCycleBootstrap", () => {
     expect(window.location.search).toBe(`?${postLogoutQuery}`);
   });
 
+  it("does not rewrite the URL while a redirect out of the route is pending", async () => {
+    // router.replace is asynchronous: until it lands, location still names the
+    // route being left. Writing it back would cancel the redirect.
+    window.history.replaceState(null, "", "/admin?mode=admin");
+    mockCyclePair([{ id: 1, title: "Q1" }] as CycleSummary[], []);
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    // An earlier test's spy is never restored, so it also recorded the setup
+    // calls above. Count only what the hook does.
+    replaceState.mockClear();
+    const setters = createSetters();
+
+    const { rerender } = renderHook(
+      ({ suspendUrlSync }: { suspendUrlSync: boolean }) =>
+        useDeepLinkCycleBootstrap({
+          user: baseUser,
+          canManageCycleSelection: false,
+          suspendUrlSync,
+          parsedCycleId: 1,
+          resolvedCycle: { id: 1, title: "Q1" },
+          sessionCycles: [],
+          deepLinkReady: true,
+          deepLinkQuery: "cycle=1&mode=admin&sel=goal_3",
+          ...setters,
+        }),
+      { initialProps: { suspendUrlSync: true } },
+    );
+
+    await waitFor(() => {
+      expect(setters.setMode).toHaveBeenCalled();
+    });
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(window.location.search).toBe("?mode=admin");
+
+    rerender({ suspendUrlSync: false });
+    await waitFor(() => {
+      expect(replaceState).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("ignores an unknown mode parameter and falls back to the path", async () => {
     window.history.replaceState(null, "", "/daily?mode=not-a-mode");
     pathnameHolder.value = "/daily";
