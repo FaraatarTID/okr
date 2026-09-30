@@ -6,6 +6,7 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
+from tests._security_state_schema import build_database_store
 
 
 SECRET = "cache-invalidation-test-signing-secret"
@@ -68,7 +69,7 @@ def test_database_app_state_read_failure_preserves_generic_none_and_strict_error
     import backend_app.security_state as security_state
     from sqlalchemy.exc import OperationalError
 
-    store = security_state.DatabaseSecurityStateStore(
+    store = build_database_store(
         database_url=f"sqlite:///{tmp_path / 'db-read-failure.db'}"
     )
     store._ensure_schema()
@@ -101,7 +102,7 @@ def test_database_app_state_write_failure_is_typed_unavailable(tmp_path, monkeyp
     import backend_app.security_state as security_state
     from sqlalchemy.exc import OperationalError
 
-    store = security_state.DatabaseSecurityStateStore(
+    store = build_database_store(
         database_url=f"sqlite:///{tmp_path / 'db-write-failure.db'}"
     )
     store._ensure_schema()
@@ -154,7 +155,7 @@ def test_generic_production_read_outage_does_not_fallback_to_memory(
     from sqlalchemy.exc import OperationalError
 
     if backend == "database":
-        store = security_state.DatabaseSecurityStateStore(
+        store = build_database_store(
             database_url=f"sqlite:///{tmp_path / 'generic-read.db'}"
         )
         store._ensure_schema()

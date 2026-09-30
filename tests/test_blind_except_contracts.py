@@ -13,6 +13,7 @@ import pytest
 
 import backend_app.worker as worker
 from backend_app import security_state
+from tests._security_state_schema import build_database_store
 
 # --- worker ---------------------------------------------------------------------------------
 
@@ -112,9 +113,7 @@ def test_memory_store_decodes_a_json_response():
 
 
 def test_database_store_reports_no_response_for_corrupt_json(tmp_path):
-    store = security_state.DatabaseSecurityStateStore(
-        database_url=f"sqlite:///{tmp_path / 'idem.db'}"
-    )
+    store = build_database_store(database_url=f"sqlite:///{tmp_path / 'idem.db'}")
     try:
         _reserve(store)
         store.store_idempotent_response(
@@ -129,9 +128,7 @@ def test_database_store_reports_no_response_for_corrupt_json(tmp_path):
 
 
 def test_database_store_decodes_a_json_response(tmp_path):
-    store = security_state.DatabaseSecurityStateStore(
-        database_url=f"sqlite:///{tmp_path / 'idem.db'}"
-    )
+    store = build_database_store(database_url=f"sqlite:///{tmp_path / 'idem.db'}")
     try:
         _reserve(store)
         store.store_idempotent_response(

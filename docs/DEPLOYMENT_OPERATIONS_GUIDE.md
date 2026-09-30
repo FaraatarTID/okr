@@ -66,9 +66,15 @@ crashed at startup with `LookupError: 'ADMIN' is not among the defined enum valu
 - The fix is to rebuild on an empty schema, not to rename labels in place. Back up the
   rows, drop the application tables and enum types, run `alembic upgrade head`, and
   restore the rows with the lowercase labels.
-- The `backend_*` tables (nonce, rate limit, distributed state, idempotency) are not in
-  the migrations. `backend_app/security_state.py` creates them on first use with row
-  level security enabled and no `anon`/`authenticated` grants.
+- The `backend_*` tables (nonce, rate limit, distributed state, idempotency) are created
+  by the `backend_security_state_tables` Alembic migration, with row level security
+  enabled and no `anon`/`authenticated` grants. The migration is idempotent, so a
+  database that already holds them from the old runtime bootstrap is adopted unchanged.
+  `backend_app/security_state.py` no longer runs any DDL: it only checks that the four
+  tables exist and, if one is missing, fails with an error telling the operator to run
+  `alembic upgrade head`. The API runs the migrations on startup (`init_database()`)
+  and the worker does the same before it touches the store, so this only surfaces when
+  migrations were skipped on purpose.
 - The `supabase_api` HTTPS data-access mode was removed on 2026-09-30. It could not work
   against a schema built by the migrations (it wrote uppercase role labels and needed
   `service_role` grants and RPC functions the migrations never create). Only

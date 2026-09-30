@@ -5,11 +5,12 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 import backend_app.security_state as security_state
+from tests._security_state_schema import build_database_store
 
 
 @pytest.fixture
 def database_store(tmp_path):
-    store = security_state.DatabaseSecurityStateStore(
+    store = build_database_store(
         database_url=f"sqlite:///{tmp_path / 'session-registry.db'}",
         cleanup_interval_seconds=3600,
     )
@@ -133,7 +134,7 @@ def test_database_registry_accepts_expiry_second_and_cleans_only_after_it(
 
 
 def test_database_registry_storage_failure_is_unavailable(tmp_path, monkeypatch):
-    store = security_state.DatabaseSecurityStateStore(
+    store = build_database_store(
         database_url=f"sqlite:///{tmp_path / 'unavailable-session-registry.db'}"
     )
     store._ensure_schema()
@@ -435,7 +436,7 @@ def test_postgres_cleanup_pages_past_more_than_one_batch_of_retained_records():
     database_url = os.getenv("OKR_TEST_POSTGRES_URL", "").strip()
     if not database_url:
         pytest.skip("OKR_TEST_POSTGRES_URL is not configured")
-    store = security_state.DatabaseSecurityStateStore(
+    store = build_database_store(
         database_url=database_url, cleanup_interval_seconds=3600
     )
     now = datetime.now(timezone.utc)
@@ -562,7 +563,7 @@ def test_postgres_registry_cleanup_is_bounded_and_preserves_expiry_equality():
     database_url = os.getenv("OKR_TEST_POSTGRES_URL", "").strip()
     if not database_url:
         pytest.skip("OKR_TEST_POSTGRES_URL is not configured")
-    store = security_state.DatabaseSecurityStateStore(
+    store = build_database_store(
         database_url=database_url, cleanup_interval_seconds=3600
     )
     now = datetime.now(timezone.utc)
@@ -892,7 +893,7 @@ def test_database_registry_uses_atomic_shared_operations_when_postgres_configure
     database_url = os.getenv("OKR_TEST_POSTGRES_URL", "").strip()
     if not database_url:
         pytest.skip("OKR_TEST_POSTGRES_URL is not configured")
-    store = security_state.DatabaseSecurityStateStore(
+    store = build_database_store(
         database_url=database_url,
         cleanup_interval_seconds=3600,
     )
@@ -945,9 +946,7 @@ def test_database_registry_concurrent_operations_use_shared_row_locking():
     if not database_url:
         pytest.skip("OKR_TEST_POSTGRES_URL is not configured")
     stores = [
-        security_state.DatabaseSecurityStateStore(
-            database_url=database_url, cleanup_interval_seconds=3600
-        )
+        build_database_store(database_url=database_url, cleanup_interval_seconds=3600)
         for _ in range(2)
     ]
     digest = (

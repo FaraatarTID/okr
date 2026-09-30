@@ -489,8 +489,11 @@ def test_the_database_security_state_backend_is_visible_to_the_harness(
 
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
     monkeypatch.setenv("OKR_DATABASE_URL", str(measured_engine.url))
+    from tests._security_state_schema import create_security_state_tables
     from tests.session_registry_test_support import attach_registered_test_session
 
+    # The backend_* tables belong to an Alembic migration, not to the store.
+    create_security_state_tables(measured_engine)
     attach_registered_test_session(client, actor_id=user.id)
     database_counters = measure_all_engines(_call)
 
