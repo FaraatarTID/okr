@@ -136,16 +136,10 @@ def test_postgres_rls_flags_for_security_hardened_tables(monkeypatch) -> None:
     _configure_database_for_postgres(monkeypatch=monkeypatch)
 
     import src.database as database
-    from backend_app.security_state import DatabaseSecurityStateStore
 
+    # The four backend_* tables (with RLS) are created by the
+    # backend_security_state_tables migration, so migrating is all it takes.
     database.run_migrations()
-    # The four backend_* tables are not migration-managed: the backend creates them, with RLS,
-    # on first use. Do the same here so this test does not depend on what ran before it.
-    store = DatabaseSecurityStateStore(database_url=_require_postgres_url())
-    try:
-        store._ensure_schema()
-    finally:
-        store.dispose()
     _assert_rls_is_enabled(
         database.get_engine(),
         [

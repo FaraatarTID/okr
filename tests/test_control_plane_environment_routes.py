@@ -10,6 +10,7 @@ import sys
 import pytest
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from tests._security_state_schema import build_database_store
 
 from src.saas.control_plane import (
     AuditEvent,
@@ -173,7 +174,7 @@ def test_session_registry_state_namespace_is_reserved_over_admin_state_api(
     import backend_app.security_state as security_state
     from backend_app.routers.platform_routes import register_platform_routes
 
-    store = security_state.DatabaseSecurityStateStore(
+    store = build_database_store(
         database_url=f"sqlite:///{tmp_path / 'reserved-state-api.db'}"
     )
     monkeypatch.setattr(security_state, "_get_store", lambda: store)

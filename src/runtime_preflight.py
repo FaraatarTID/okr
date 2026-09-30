@@ -145,7 +145,6 @@ def evaluate_runtime_preflight(
     backend_signing_secret: Optional[str] = None,
     bootstrap_admin_password: Optional[str] = None,
     backend_security_state_backend: str = "memory",
-    backend_security_state_redis_url: Optional[str] = None,
     runtime_env: str = "development",
     deployment_profile: str = "",
     data_access_mode: str = "database",
@@ -231,23 +230,9 @@ def evaluate_runtime_preflight(
     security_state_backend = str(backend_security_state_backend or "").strip().lower()
     if not security_state_backend:
         security_state_backend = "memory"
-    distributed_backends = {"database", "redis"}
-    if (
-        is_production
-        and backend_url
-        and security_state_backend not in distributed_backends
-    ):
+    if is_production and backend_url and security_state_backend != "database":
         report.errors.append(
-            "Production backend mode requires OKR_BACKEND_SECURITY_STATE_BACKEND=database or redis."
-        )
-    if (
-        is_production
-        and backend_url
-        and security_state_backend == "redis"
-        and not str(backend_security_state_redis_url or "").strip()
-    ):
-        report.errors.append(
-            "OKR_BACKEND_SECURITY_STATE_BACKEND=redis requires OKR_BACKEND_SECURITY_STATE_REDIS_URL."
+            "Production backend mode requires OKR_BACKEND_SECURITY_STATE_BACKEND=database."
         )
 
     bootstrap_password = str(bootstrap_admin_password or "").strip()

@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_deploy_config.py"
 
@@ -53,7 +55,6 @@ def _write_env(
     placeholder_values: bool,
     include_throttle_key: bool = True,
     security_state_backend: str = "database",
-    security_state_redis_url: str = "",
     pdf_method: str = "pdfshift",
     backend_bind_address: str = "127.0.0.1",
 ) -> None:
@@ -90,7 +91,6 @@ def _write_env(
         "OKR_BACKEND_PROXY_MUTATIONS=true",
         "OKR_BACKEND_PROXY_READS=true",
         f"OKR_BACKEND_SECURITY_STATE_BACKEND={security_state_backend}",
-        f"OKR_BACKEND_SECURITY_STATE_REDIS_URL={security_state_redis_url}",
         f"OKR_BACKEND_BIND_ADDRESS={backend_bind_address}",
         "OKR_ALLOW_LOCAL_MUTATION_FALLBACK=false",
         "OKR_ALLOW_LOCAL_READ_FALLBACK=false",
@@ -171,34 +171,20 @@ def test_runtime_mode_rejects_service_token_reused_as_signing_secret(tmp_path: P
     assert "must differ from 'OKR_BACKEND_SERVICE_TOKEN'" in result.stdout
 
 
-def test_runtime_mode_rejects_redis_backend_without_redis_url(tmp_path: Path):
+@pytest.mark.parametrize("mode", ["template", "runtime"])
+def test_redis_security_state_backend_is_rejected_loudly(tmp_path: Path, mode: str):
     env_file = tmp_path / ".env"
     _write_env(
         env_file,
-        placeholder_values=False,
+        placeholder_values=(mode == "template"),
         security_state_backend="redis",
-        security_state_redis_url="",
     )
 
-    result = _run_checker(env_file, mode="runtime")
+    result = _run_checker(env_file, mode=mode)
 
     assert result.returncode == 1
-    assert "OKR_BACKEND_SECURITY_STATE_REDIS_URL is required" in result.stdout
-
-
-def test_runtime_mode_accepts_redis_backend_with_valid_redis_url(tmp_path: Path):
-    env_file = tmp_path / ".env"
-    _write_env(
-        env_file,
-        placeholder_values=False,
-        security_state_backend="redis",
-        security_state_redis_url="redis://redis.internal:6379/0",
-    )
-
-    result = _run_checker(env_file, mode="runtime")
-
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "Deploy config check passed (mode=runtime)" in result.stdout
+    assert "OKR_BACKEND_SECURITY_STATE_BACKEND must be database" in result.stdout
+    assert "Redis security-state backend was removed" in result.stdout
 
 
 def test_runtime_mode_accepts_chromium_without_pdfshift_key(tmp_path: Path):

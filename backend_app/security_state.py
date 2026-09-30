@@ -9,11 +9,10 @@ import sqlite3
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from threading import Lock
 from typing import Literal, Optional, Protocol
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
@@ -25,6 +24,14 @@ _LOGGER = logging.getLogger(__name__)
 _SQLITE_ADAPTER_REGISTERED = False
 _SQLITE_ADAPTER_LOCK = Lock()
 _SESSION_CLEANUP_BATCH_SIZE = 100
+
+# Created and owned by the `backend_security_state_tables` Alembic migration.
+SECURITY_STATE_TABLES = (
+    "backend_request_nonce",
+    "backend_rate_limit_counter",
+    "backend_distributed_state",
+    "backend_idempotency_record",
+)
 
 
 class SecurityStateUnavailableError(RuntimeError):
@@ -61,18 +68,6 @@ def _session_datetime(value: datetime) -> datetime:
 
 def _session_datetime_text(value: datetime) -> str:
     return _session_datetime(value).isoformat(timespec="microseconds")
-
-
-def _session_epoch_microseconds(value: datetime) -> str:
-    instant = _session_datetime(value)
-    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
-    delta = instant - epoch
-    microseconds = (
-        delta.days * 86_400_000_000 + delta.seconds * 1_000_000 + delta.microseconds
-    )
-    if microseconds < 0:
-        raise ValueError("Session timestamps must not predate the Unix epoch.")
-    return f"{microseconds:020d}"
 
 
 def _session_datetime_from_text(value: object) -> datetime:
@@ -640,148 +635,40 @@ class DatabaseSecurityStateStore:
             ) from exc
 
     def _ensure_schema(self) -> None:
+        """Verify the Alembic-managed tables exist (cached once they do).
+
+        The tables are created by the ``backend_security_state_tables``
+        migration; this store never issues DDL. A missing table is an
+        operator error (migrations were not applied), reported clearly.
+        """
         if self._schema_ready:
             return
         with self._schema_lock:
             if self._schema_ready:
                 return
             try:
-                with self._engine.begin() as conn:
-                    conn.execute(
-                        text(
-                            """
-                            CREATE TABLE IF NOT EXISTS backend_request_nonce (
-                                nonce_hash VARCHAR(128) PRIMARY KEY,
-                                created_at TIMESTAMP NOT NULL,
-                                expires_at TIMESTAMP NOT NULL
-                            )
-                            """
-                        )
-                    )
-                    conn.execute(
-                        text(
-                            """
-                            CREATE INDEX IF NOT EXISTS ix_backend_request_nonce_expires_at
-                            ON backend_request_nonce (expires_at)
-                            """
-                        )
-                    )
-                    conn.execute(
-                        text(
-                            """
-                            CREATE TABLE IF NOT EXISTS backend_rate_limit_counter (
-                                bucket_key VARCHAR(255) PRIMARY KEY,
-                                count INTEGER NOT NULL,
-                                expires_at TIMESTAMP NOT NULL
-                            )
-                            """
-                        )
-                    )
-                    conn.execute(
-                        text(
-                            """
-                            CREATE INDEX IF NOT EXISTS ix_backend_rate_limit_counter_expires_at
-                            ON backend_rate_limit_counter (expires_at)
-                            """
-                        )
-                    )
-                    conn.execute(
-                        text(
-                            """
-                            CREATE TABLE IF NOT EXISTS backend_distributed_state (
-                                state_key VARCHAR(255) PRIMARY KEY,
-                                state_value TEXT,
-                                updated_at TIMESTAMP NOT NULL
-                            )
-                            """
-                        )
-                    )
-                    conn.execute(
-                        text(
-                            """
-                            CREATE TABLE IF NOT EXISTS backend_idempotency_record (
-                                scope VARCHAR(128) NOT NULL,
-                                actor VARCHAR(128) NOT NULL,
-                                idempotency_key VARCHAR(255) NOT NULL,
-                                payload_hash VARCHAR(128) NOT NULL,
-                                response_json TEXT,
-                                created_at TIMESTAMP NOT NULL,
-                                expires_at TIMESTAMP NOT NULL,
-                                PRIMARY KEY (scope, actor, idempotency_key)
-                            )
-                            """
-                        )
-                    )
-                    conn.execute(
-                        text(
-                            """
-                            CREATE INDEX IF NOT EXISTS ix_backend_idempotency_expires_at
-                            ON backend_idempotency_record (expires_at)
-                            """
-                        )
-                    )
-                    if self._engine.dialect.name == "postgresql":
-                        # Enable RLS with no policies so PostgREST anon /
-                        # authenticated roles cannot read these internal
-                        # tables; the backend connects as table owner and
-                        # is unaffected.
-                        for _table in (
-                            "backend_request_nonce",
-                            "backend_rate_limit_counter",
-                            "backend_distributed_state",
-                            "backend_idempotency_record",
-                        ):
-                            conn.execute(
-                                text(
-                                    f'ALTER TABLE IF EXISTS "{_table}" '
-                                    "ENABLE ROW LEVEL SECURITY"
-                                )
-                            )
-                            conn.execute(
-                                text(
-                                    "DO $$ BEGIN "  # noqa: S608 - _table comes from the fixed tuple above, never from input
-                                    "IF EXISTS (SELECT 1 FROM pg_roles "
-                                    "WHERE rolname IN ('anon', 'authenticated')) "
-                                    f'THEN REVOKE ALL ON TABLE "{_table}" '
-                                    "FROM anon, authenticated; END IF; END $$"
-                                )
-                            )
-                    self._warn_if_migrations_pending(conn)
+                with self._engine.connect() as conn:
+                    inspector = inspect(conn)
+                    missing = [
+                        table
+                        for table in SECURITY_STATE_TABLES
+                        if not inspector.has_table(table)
+                    ]
             except SQLAlchemyError as exc:
                 raise SecurityStateUnavailableError(
                     "Distributed security state storage is unavailable."
                 ) from exc
-            self._schema_ready = True
-
-    def _warn_if_migrations_pending(self, conn) -> None:
-        """Log a warning when the bootstrap runs on a DB behind Alembic head.
-
-        The bootstrap creates its tables outside Alembic so the backend can
-        start even before migrations run. That is safe for these tables
-        (RLS is enabled above), but a DB not at head means the deploy skipped
-        migrations — surface it loudly instead of failing startup.
-        """
-        try:
-            from alembic.config import Config
-            from alembic.script import ScriptDirectory
-            from alembic.runtime.migration import MigrationContext
-
-            project_root = Path(__file__).resolve().parents[1]
-            cfg = Config(str(project_root / "alembic.ini"))
-            cfg.set_main_option("script_location", str(project_root / "alembic"))
-            heads = ScriptDirectory.from_config(cfg).get_heads()
-            current = MigrationContext.configure(conn).get_current_revision()
-            if current not in set(heads):
-                _LOGGER.warning(
-                    "Database security state bootstrap ran while database is "
-                    "not at Alembic head (current=%s, head=%s). Run "
-                    "`alembic upgrade head` — Alembic remains the source of "
-                    "truth for schema.",
-                    current,
-                    ",".join(heads),
+            if missing:
+                _LOGGER.error(
+                    "Security state tables missing: %s. Run `alembic upgrade head`.",
+                    ", ".join(missing),
                 )
-        except Exception as exc:  # noqa: BLE001 — advisory check only
-            _LOGGER.debug("Alembic head advisory check skipped: %s", exc)
+                raise SecurityStateUnavailableError(
+                    "Distributed security state tables are missing "
+                    f"({', '.join(missing)}). Run `alembic upgrade head` "
+                    "before starting the backend."
+                )
+            self._schema_ready = True
 
     def _cleanup_if_due(self, now_dt: datetime, now_ts: float) -> None:
         if (now_ts - float(self._last_cleanup_at)) < float(
@@ -1070,433 +957,11 @@ class DatabaseSecurityStateStore:
             _LOGGER.debug("Failed to store idempotent response: %s", exc)
 
 
-class RedisSecurityStateStore:
-    """Distributed security state backed by Redis."""
-
-    _RATE_LIMIT_LUA = """
-    local current = redis.call('INCR', KEYS[1])
-    if current == 1 then
-        redis.call('EXPIRE', KEYS[1], ARGV[1])
-    end
-    if current > tonumber(ARGV[2]) then
-        return 0
-    end
-    return 1
-    """
-
-    _REGISTER_SESSION_LUA = """
-    local function expire_after_last_microsecond(expires_at)
-        local expires_ms = tonumber(string.sub(expires_at, 1, 17))
-        local sub_ms = tonumber(string.sub(expires_at, 18, 20))
-        if sub_ms > 0 then expires_ms = expires_ms + 1 end
-        redis.call('PEXPIREAT', KEYS[1], expires_ms + 1)
-    end
-    local current = redis.call('GET', KEYS[1])
-    if not current then
-        redis.call('SET', KEYS[1], ARGV[3])
-        expire_after_last_microsecond(ARGV[2])
-        return 1
-    end
-    local ok, record = pcall(cjson.decode, current)
-    if not ok or type(record) ~= 'table'
-       or type(record.actor_id) ~= 'string'
-       or string.len(record.actor_id) == 0
-       or type(record.expires_at) ~= 'string'
-       or string.len(record.expires_at) ~= 20
-       or string.find(record.expires_at, '%D')
-       or record.expires_at > '00253402300799999999'
-       or (record.status ~= 'active' and record.status ~= 'revoked') then
-        return -2
-    end
-    if record.actor_id ~= ARGV[1] or record.expires_at ~= ARGV[2] then
-        return -1
-    end
-    expire_after_last_microsecond(record.expires_at)
-    return 0
-    """
-
-    _CHECK_SESSION_LUA = """
-    local current = redis.call('GET', KEYS[1])
-    if not current then return 0 end
-    local ok, record = pcall(cjson.decode, current)
-    if not ok or type(record) ~= 'table'
-       or type(record.actor_id) ~= 'string'
-       or string.len(record.actor_id) == 0
-       or type(record.expires_at) ~= 'string'
-       or string.len(record.expires_at) ~= 20
-       or string.find(record.expires_at, '%D')
-       or record.expires_at > '00253402300799999999'
-       or (record.status ~= 'active' and record.status ~= 'revoked') then
-        return -2
-    end
-    if record.expires_at < ARGV[2] then
-        redis.call('DEL', KEYS[1])
-        return 0
-    end
-    if record.actor_id ~= ARGV[1] then return 0 end
-    if record.status == 'revoked' then return 2 end
-    return 1
-    """
-
-    _REVOKE_SESSION_LUA = """
-    local function expire_after_last_microsecond(expires_at)
-        local expires_ms = tonumber(string.sub(expires_at, 1, 17))
-        local sub_ms = tonumber(string.sub(expires_at, 18, 20))
-        if sub_ms > 0 then expires_ms = expires_ms + 1 end
-        redis.call('PEXPIREAT', KEYS[1], expires_ms + 1)
-    end
-    local current = redis.call('GET', KEYS[1])
-    if not current then return 0 end
-    local ok, record = pcall(cjson.decode, current)
-    if not ok or type(record) ~= 'table'
-       or type(record.actor_id) ~= 'string'
-       or string.len(record.actor_id) == 0
-       or type(record.expires_at) ~= 'string'
-       or string.len(record.expires_at) ~= 20
-       or string.find(record.expires_at, '%D')
-       or record.expires_at > '00253402300799999999'
-       or (record.status ~= 'active' and record.status ~= 'revoked') then
-        return -2
-    end
-    if record.expires_at < ARGV[1] then
-        redis.call('DEL', KEYS[1])
-        return 0
-    end
-    record.status = 'revoked'
-    if not record.revoked_at then record.revoked_at = ARGV[1] end
-    redis.call('SET', KEYS[1], cjson.encode(record))
-    expire_after_last_microsecond(record.expires_at)
-    return 2
-    """
-
-    def __init__(self, *, redis_url: str, key_prefix: str = "okr:security") -> None:
-        safe_redis_url = str(redis_url or "").strip()
-        if not safe_redis_url:
-            raise SecurityStateUnavailableError(
-                "Redis security state backend requires OKR_BACKEND_SECURITY_STATE_REDIS_URL."
-            )
-        self._key_prefix = str(key_prefix or "okr:security").strip() or "okr:security"
-        try:
-            from redis import Redis
-        except Exception as exc:
-            raise SecurityStateUnavailableError(
-                "Redis backend requires the 'redis' Python package."
-            ) from exc
-
-        try:
-            self._client = Redis.from_url(
-                safe_redis_url,
-                socket_connect_timeout=2,
-                socket_timeout=2,
-                health_check_interval=30,
-            )
-            self._client.ping()
-        except Exception as exc:
-            raise SecurityStateUnavailableError(
-                "Redis security state backend is unavailable."
-            ) from exc
-
-    def dispose(self) -> None:
-        try:
-            self._client.close()
-        except Exception as exc:  # noqa: BLE001 - best-effort shutdown path; logged at debug, nothing to recover
-            _LOGGER.debug("Redis security state dispose failed: %s", exc)
-
-    def _nonce_key(self, nonce: str) -> str:
-        nonce_hash = hashlib.sha256(str(nonce).encode("utf-8")).hexdigest()
-        return f"{self._key_prefix}:nonce:{nonce_hash}"
-
-    def _session_key(self, session_digest: str) -> str:
-        _validate_session_identity(session_digest=session_digest)
-        return f"{self._key_prefix}:session:{session_digest}"
-
-    def register_session(
-        self, *, session_digest: str, actor_id: str, expires_at: datetime
-    ) -> None:
-        _validate_session_identity(session_digest=session_digest, actor_id=actor_id)
-        expiry = _session_epoch_microseconds(expires_at)
-        import json
-
-        record = json.dumps(
-            {
-                "actor_id": actor_id,
-                "expires_at": expiry,
-                "status": "active",
-                "created_at": _session_datetime_text(datetime.now(timezone.utc)),
-                "revoked_at": None,
-            },
-            separators=(",", ":"),
-        )
-        expiry_arg = expiry
-        try:
-            result = int(
-                self._client.eval(
-                    self._REGISTER_SESSION_LUA,
-                    1,
-                    self._session_key(session_digest),
-                    actor_id,
-                    expiry_arg,
-                    record,
-                )
-            )
-        except Exception as exc:
-            raise SecurityStateUnavailableError(
-                "Redis session registry registration is unavailable."
-            ) from exc
-        if result in {0, 1}:
-            return
-        if result == -1:
-            raise SessionRegistrationConflictError(
-                "Session digest is already registered with different data."
-            )
-        raise SecurityStateUnavailableError(
-            "Redis session registry record is malformed."
-        )
-
-    def check_session(
-        self, *, session_digest: str, actor_id: str, now: datetime
-    ) -> SessionRegistryStatus:
-        _validate_session_identity(session_digest=session_digest, actor_id=actor_id)
-        instant = _session_epoch_microseconds(now)
-        try:
-            result = int(
-                self._client.eval(
-                    self._CHECK_SESSION_LUA,
-                    1,
-                    self._session_key(session_digest),
-                    actor_id,
-                    instant,
-                )
-            )
-        except Exception as exc:
-            raise SecurityStateUnavailableError(
-                "Redis session registry check is unavailable."
-            ) from exc
-        if result == 0:
-            return "unknown"
-        if result == 1:
-            return "active"
-        if result == 2:
-            return "revoked"
-        raise SecurityStateUnavailableError(
-            "Redis session registry record is malformed."
-        )
-
-    def revoke_session(
-        self, *, session_digest: str, now: datetime
-    ) -> SessionRegistryStatus:
-        _validate_session_identity(session_digest=session_digest)
-        instant = _session_epoch_microseconds(now)
-        try:
-            result = int(
-                self._client.eval(
-                    self._REVOKE_SESSION_LUA,
-                    1,
-                    self._session_key(session_digest),
-                    instant,
-                )
-            )
-        except Exception as exc:
-            raise SecurityStateUnavailableError(
-                "Redis session registry revocation is unavailable."
-            ) from exc
-        if result == 0:
-            return "unknown"
-        if result == 2:
-            return "revoked"
-        raise SecurityStateUnavailableError(
-            "Redis session registry record is malformed."
-        )
-
-    def _rate_limit_key(
-        self,
-        *,
-        key: str,
-        bucket_start: int,
-    ) -> str:
-        key_hash = hashlib.sha256(str(key).encode("utf-8")).hexdigest()
-        return f"{self._key_prefix}:rl:{key_hash}:{bucket_start}"
-
-    def register_nonce_once(
-        self,
-        *,
-        nonce: str,
-        now_ts: int,
-        window_seconds: int,
-    ) -> bool:
-        safe_nonce = str(nonce or "").strip()
-        if not safe_nonce:
-            return False
-        safe_window = max(1, int(window_seconds))
-        key = self._nonce_key(safe_nonce)
-
-        try:
-            accepted = self._client.set(
-                key,
-                str(int(now_ts)),
-                nx=True,
-                ex=safe_window,
-            )
-            return bool(accepted)
-        except Exception as exc:
-            raise SecurityStateUnavailableError(
-                "Distributed nonce replay protection is unavailable."
-            ) from exc
-
-    def check_rate_limit(
-        self,
-        *,
-        key: str,
-        limit: int,
-        window_seconds: int,
-        now_ts: Optional[float] = None,
-    ) -> bool:
-        safe_key = str(key or "").strip() or "unknown"
-        safe_limit = max(1, int(limit))
-        safe_window_seconds = max(1, int(window_seconds))
-        now_float = float(now_ts if now_ts is not None else time.time())
-        bucket_start = int(now_float // safe_window_seconds) * safe_window_seconds
-        bucket_key = self._rate_limit_key(
-            key=safe_key,
-            bucket_start=bucket_start,
-        )
-        ttl_seconds = safe_window_seconds + 1
-
-        try:
-            allowed = self._client.eval(
-                self._RATE_LIMIT_LUA,
-                1,
-                bucket_key,
-                str(ttl_seconds),
-                str(safe_limit),
-            )
-            return bool(int(allowed) == 1)
-        except Exception as exc:
-            raise SecurityStateUnavailableError(
-                "Distributed rate limiter storage is unavailable."
-            ) from exc
-
-    def get_app_state(self, key: str) -> Optional[str]:
-        return self._get_app_state(key, strict=False)
-
-    def get_app_state_strict(self, key: str) -> Optional[str]:
-        """Read Redis app state while preserving provider failures for strict callers."""
-        return self._get_app_state(key, strict=True)
-
-    def _get_app_state(self, key: str, *, strict: bool) -> Optional[str]:
-        _validate_generic_state_key(key)
-        try:
-            # redis-py .get() returns bytes or None
-            value = self._client.get(f"{self._key_prefix}:state:{key}")
-            return value.decode("utf-8") if value is not None else None
-        except Exception as exc:
-            _LOGGER.debug("Failed to get Redis app state '%s': %s", key, exc)
-            if strict:
-                raise SecurityStateUnavailableError(
-                    "Redis application state is unavailable."
-                ) from exc
-            return None
-
-    def set_app_state(self, key: str, value: str) -> None:
-        _validate_generic_state_key(key)
-        try:
-            self._client.set(f"{self._key_prefix}:state:{key}", str(value))
-        except Exception as exc:
-            raise SecurityStateUnavailableError(
-                f"Failed to set Redis app state '{key}'."
-            ) from exc
-
-    def _idem_key(self, scope: str, actor: str, key: str) -> str:
-        composite = f"{scope}:{actor}:{key}"
-        h = hashlib.sha256(composite.encode("utf-8")).hexdigest()
-        return f"{self._key_prefix}:idem:{h}"
-
-    def reserve_idempotency_key(
-        self,
-        *,
-        scope: str,
-        actor: str,
-        key: str,
-        payload_hash: str,
-        ttl_seconds: int,
-    ) -> bool:
-        redis_key = self._idem_key(scope, actor, key)
-        ttl = max(1, int(ttl_seconds))
-        try:
-            import json as _json
-
-            record = _json.dumps({"ph": payload_hash})
-            accepted = self._client.set(redis_key, record, nx=True, ex=ttl)
-            return bool(accepted)
-        except Exception as exc:
-            raise SecurityStateUnavailableError(
-                "Distributed idempotency reservation is unavailable."
-            ) from exc
-
-    def load_idempotent_response(
-        self,
-        *,
-        scope: str,
-        actor: str,
-        key: str,
-    ) -> Optional[dict]:
-        redis_key = self._idem_key(scope, actor, key)
-        try:
-            import json as _json
-
-            raw = self._client.get(redis_key)
-            if raw is None:
-                return None
-            data = _json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
-            result: dict = {"payload_hash": data.get("ph", "")}
-            resp = data.get("resp")
-            if resp is not None:
-                result["response"] = resp
-            else:
-                result["response"] = None
-            return result
-        except Exception as exc:  # noqa: BLE001 - redis is an optional dependency, so its error types cannot be named here; None makes the caller answer 409 (fail closed), never replay a wrong response
-            _LOGGER.debug("Failed to load Redis idempotent response: %s", exc)
-            return None
-
-    def store_idempotent_response(
-        self,
-        *,
-        scope: str,
-        actor: str,
-        key: str,
-        response_json: str,
-    ) -> None:
-        redis_key = self._idem_key(scope, actor, key)
-        try:
-            import json as _json
-
-            existing = self._client.get(redis_key)
-            if existing is None:
-                return
-            data = _json.loads(
-                existing.decode("utf-8") if isinstance(existing, bytes) else existing
-            )
-            data["resp"] = (
-                _json.loads(response_json)
-                if isinstance(response_json, str)
-                else response_json
-            )
-            ttl = self._client.ttl(redis_key)
-            new_value = _json.dumps(data)
-            if ttl and ttl > 0:
-                self._client.set(redis_key, new_value, ex=ttl)
-            else:
-                self._client.set(redis_key, new_value)
-        except Exception as exc:  # noqa: BLE001 - redis is an optional dependency, so its error types cannot be named here; the response is not stored, so a retry gets 409 rather than a replay
-            _LOGGER.debug("Failed to store Redis idempotent response: %s", exc)
-
-
 _PRODUCTION_ENV_NAMES = {"prod", "production"}
 _memory_store = InMemorySecurityStateStore()
 _store_lock = Lock()
 _cached_store: SecurityStateStore | None = None
-_cached_signature: tuple[str, str, int, str, str, str] | None = None
+_cached_signature: tuple[str, str, int, str] | None = None
 
 
 def _utc_naive_from_epoch(epoch_seconds: float | int) -> datetime:
@@ -1525,14 +990,12 @@ def _is_production(settings: BackendSettings) -> bool:
     return str(settings.runtime_env or "").strip().lower() in _PRODUCTION_ENV_NAMES
 
 
-def _store_signature(settings: BackendSettings) -> tuple[str, str, int, str, str, str]:
+def _store_signature(settings: BackendSettings) -> tuple[str, str, int, str]:
     return (
         str(settings.runtime_env or "").strip().lower(),
         str(settings.security_state_backend or "").strip().lower(),
         int(settings.security_state_cleanup_seconds),
         _resolve_database_url(),
-        str(settings.security_state_redis_url or "").strip(),
-        str(settings.security_state_redis_prefix or "").strip(),
     )
 
 
@@ -1540,17 +1003,6 @@ def _build_store(settings: BackendSettings) -> SecurityStateStore:
     backend = str(settings.security_state_backend or "memory").strip().lower()
     if backend == "memory":
         return _memory_store
-
-    if backend == "redis":
-        try:
-            return RedisSecurityStateStore(
-                redis_url=settings.security_state_redis_url,
-                key_prefix=settings.security_state_redis_prefix,
-            )
-        except SecurityStateUnavailableError:
-            if not _is_production(settings):
-                return _memory_store
-            raise
 
     try:
         return DatabaseSecurityStateStore(
@@ -1571,9 +1023,7 @@ def _get_store() -> SecurityStateStore:
     with _store_lock:
         if _cached_store is not None and _cached_signature == signature:
             return _cached_store
-        if isinstance(
-            _cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)
-        ):
+        if isinstance(_cached_store, DatabaseSecurityStateStore):
             _cached_store.dispose()
         _cached_store = _build_store(settings)
         _cached_signature = signature
@@ -1583,9 +1033,7 @@ def _get_store() -> SecurityStateStore:
 def _fallback_to_memory_store() -> InMemorySecurityStateStore:
     global _cached_store, _cached_signature
     with _store_lock:
-        if isinstance(
-            _cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)
-        ):
+        if isinstance(_cached_store, DatabaseSecurityStateStore):
             _cached_store.dispose()
         _cached_store = _memory_store
         _cached_signature = None
@@ -1659,7 +1107,6 @@ def _shared_app_state_store() -> SecurityStateStore:
     expected_type = {
         "memory": InMemorySecurityStateStore,
         "database": DatabaseSecurityStateStore,
-        "redis": RedisSecurityStateStore,
     }.get(backend)
     if expected_type is None or not isinstance(store, expected_type):
         raise SecurityStateUnavailableError(
@@ -1672,7 +1119,7 @@ def get_shared_app_state(key: str) -> Optional[str]:
     """Read shared state without falling back to process-local memory."""
     _validate_generic_state_key(key)
     store = _shared_app_state_store()
-    if isinstance(store, (DatabaseSecurityStateStore, RedisSecurityStateStore)):
+    if isinstance(store, DatabaseSecurityStateStore):
         return store.get_app_state_strict(key)
     return store.get_app_state(key)
 
@@ -1684,10 +1131,6 @@ def _session_store() -> SecurityStateStore:
     if backend == "database" and not isinstance(store, DatabaseSecurityStateStore):
         raise SecurityStateUnavailableError(
             "Configured database session registry is unavailable."
-        )
-    if backend == "redis" and not isinstance(store, RedisSecurityStateStore):
-        raise SecurityStateUnavailableError(
-            "Configured Redis session registry is unavailable."
         )
     return store
 
@@ -1814,9 +1257,7 @@ def store_idempotent_response(
 def reset_security_state_for_tests() -> None:
     global _cached_store, _cached_signature
     with _store_lock:
-        if isinstance(
-            _cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)
-        ):
+        if isinstance(_cached_store, DatabaseSecurityStateStore):
             _cached_store.dispose()
         _cached_store = None
         _cached_signature = None

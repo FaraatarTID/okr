@@ -1,7 +1,10 @@
-"""Opt-in process-level T23 session-registry drill against a dedicated Redis.
+"""Process-level T23 session-registry drill against the shared database backend.
 
-Set ``OKR_TEST_REDIS_URL`` to an explicitly disposable Redis instance to run.
-The test uses a unique Redis key prefix and never flushes or enumerates the DB.
+Two backend processes and two BFF processes share one disposable SQLite file
+through ``OKR_BACKEND_SECURITY_STATE_BACKEND=database``. The backend processes
+create the registry tables themselves by running the Alembic migrations at startup.
+Runs locally when the spa-bff Node dependencies are installed; CI requires it with
+``OKR_REQUIRE_T23_PROCESS_DRILL=true``.
 """
 
 from __future__ import annotations
@@ -116,7 +119,6 @@ def _safe_log_tail(path: Path, *, max_chars: int = 4000) -> str:
         return ""
     contents = path.read_text(encoding="utf-8", errors="replace")[-max_chars:]
     for secret in (
-        os.getenv("OKR_TEST_REDIS_URL", ""),
         _SERVICE_TOKEN,
         _SIGNING_SECRET,
         _BFF_SESSION_SECRET,
@@ -204,8 +206,6 @@ def _base_backend_env(
     *,
     repo_root: Path,
     db_url: str,
-    redis_url: str,
-    redis_prefix: str,
     backend_port: int,
 ) -> dict[str, str]:
     env = os.environ.copy()
@@ -227,9 +227,7 @@ def _base_backend_env(
             "OKR_BACKEND_ENFORCE_TOKEN": "true",
             "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "true",
             "OKR_BACKEND_SIGNING_SECRET": _SIGNING_SECRET,
-            "OKR_BACKEND_SECURITY_STATE_BACKEND": "redis",
-            "OKR_BACKEND_SECURITY_STATE_REDIS_URL": redis_url,
-            "OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX": redis_prefix,
+            "OKR_BACKEND_SECURITY_STATE_BACKEND": "database",
             "OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS": "10000",
             "OKR_STRICT_RUNTIME_PREFLIGHT": "false",
             "OKR_ENFORCE_STRONG_PASSWORD_POLICY": "false",
@@ -319,26 +317,6 @@ def _mint_unknown_session_cookie(*, actor: dict[str, Any]) -> str:
 def test_session_registry_processes_share_registration_and_revoke_across_restart(
     tmp_path: Path,
 ) -> None:
-    redis_url = str(os.getenv("OKR_TEST_REDIS_URL", "")).strip()
-    if not redis_url:
-        _skip_or_fail_missing_prerequisite(
-            "Set OKR_TEST_REDIS_URL to an explicitly disposable Redis instance."
-        )
-
-    try:
-        import redis
-
-        client = redis.Redis.from_url(
-            redis_url, socket_connect_timeout=2, socket_timeout=2
-        )
-        client.ping()
-        client.close()
-    except Exception as exc:
-        pytest.fail(
-            "OKR_TEST_REDIS_URL was supplied but the dedicated Redis is not reachable: "
-            f"{type(exc).__name__}"
-        )
-
     repo_root = Path(__file__).resolve().parents[1]
     bff_root = repo_root / "spa-bff"
     if not (bff_root / "node_modules" / "tsx").exists():
@@ -348,7 +326,6 @@ def test_session_registry_processes_share_registration_and_revoke_across_restart
 
     database_path = tmp_path / "t23-process-integration.sqlite3"
     db_url = f"sqlite:///{database_path.as_posix()}"
-    redis_prefix = f"t23-process-{uuid.uuid4().hex}"
     ports: list[int] = []
     while len(ports) < 4:
         candidate = _free_local_port()
@@ -359,15 +336,11 @@ def test_session_registry_processes_share_registration_and_revoke_across_restart
     backend_a_env = _base_backend_env(
         repo_root=repo_root,
         db_url=db_url,
-        redis_url=redis_url,
-        redis_prefix=redis_prefix,
         backend_port=backend_a_port,
     )
     backend_b_env = _base_backend_env(
         repo_root=repo_root,
         db_url=db_url,
-        redis_url=redis_url,
-        redis_prefix=redis_prefix,
         backend_port=backend_b_port,
     )
     bff_a_env = _bff_env(backend_port=backend_a_port, bff_port=bff_a_port)
@@ -448,9 +421,9 @@ def test_session_registry_processes_share_registration_and_revoke_across_restart
         )
         assert second_me_status == 200, second_me_body.decode("utf-8", errors="replace")
 
-        # Exercise the configured Redis provider at exp == now and immediately
+        # Exercise the configured database provider at exp == now and immediately
         # after. Registration goes through the signed backend service endpoint;
-        # checks use an independent Redis store client with the same namespace.
+        # checks use an independent store client on the same database.
         boundary_session_id = f"expiry-boundary-{uuid.uuid4().hex}"
         boundary_expiry = datetime.now(timezone.utc) + timedelta(minutes=5)
         register_path = "/v1/internal/session-registry/register"
@@ -469,11 +442,9 @@ def test_session_registry_processes_share_registration_and_revoke_across_restart
             raw_body=register_body,
         )
         assert boundary_status == 200, boundary_body.decode("utf-8", errors="replace")
-        from backend_app.security_state import RedisSecurityStateStore
+        from backend_app.security_state import DatabaseSecurityStateStore
 
-        boundary_store = RedisSecurityStateStore(
-            redis_url=redis_url, key_prefix=redis_prefix
-        )
+        boundary_store = DatabaseSecurityStateStore(database_url=db_url)
         try:
             boundary_digest = hashlib.sha256(
                 boundary_session_id.encode("utf-8")
@@ -532,14 +503,22 @@ def test_session_registry_processes_share_registration_and_revoke_across_restart
             "utf-8", errors="replace"
         )
 
-        # Point a fresh backend B at a deliberately unavailable local port while
-        # retaining the dedicated provider URL nowhere in process configuration.
-        # No shared Redis instance is stopped or modified for the outage case.
+        # Fail closed when the shared registry storage is unusable: drop the
+        # migration-owned tables under a freshly started backend B. It must answer
+        # 503 (never fall back to process-local state or accept the cookie).
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import NullPool
+
+        from tests._security_state_schema import drop_security_state_tables
+
         _stop_process(processes.pop("bff-b", None))
         _stop_process(processes.pop("backend-b", None))
-        outage_env = backend_b_env.copy()
-        outage_env["OKR_BACKEND_SECURITY_STATE_REDIS_URL"] = "redis://127.0.0.1:1/0"
-        start_backend("backend-b-outage", backend_b_port, outage_env)
+        outage_engine = create_engine(db_url, poolclass=NullPool)
+        try:
+            drop_security_state_tables(outage_engine)
+        finally:
+            outage_engine.dispose()
+        start_backend("backend-b-outage", backend_b_port, backend_b_env)
         start_bff("bff-b-outage", bff_b_port, bff_b_env)
         outage_status, _, outage_body = _http(
             f"http://127.0.0.1:{bff_b_port}/session/me",

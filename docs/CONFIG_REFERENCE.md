@@ -138,8 +138,7 @@ Runtime preflight policy
   - Runtime validates PDF provider mode and key presence.
   - Runtime also validates backend production-safety wiring (backend URL/token/signing secret/distributed security backend).
   - Production requires `OKR_BOOTSTRAP_ADMIN_PASSWORD` and it must be strong (minimum 12 chars including upper/lowercase, number, symbol).
-  - Production backend mode requires `OKR_BACKEND_SECURITY_STATE_BACKEND=database` or `redis` for distributed nonce/rate-limit state.
-  - If `OKR_BACKEND_SECURITY_STATE_BACKEND=redis`, set `OKR_BACKEND_SECURITY_STATE_REDIS_URL`.
+  - Production backend mode requires `OKR_BACKEND_SECURITY_STATE_BACKEND=database` for distributed nonce/rate-limit state.
   - When `spa-bff` proxies requests, the backend rate limiter keys per-user limiting on the application-private `x-okr-client-ip` header (requires a valid service token). `x-forwarded-for` and `x-real-ip` are not read. If the private header is absent the limiter falls back to the peer address, which degrades to an aggregate limit over the proxy rather than dropping the limit. See [client-ip-trust-adr.md](client-ip-trust-adr.md).
   - In strict mode, critical preflight errors stop app startup.
   - Provider configuration issues are surfaced as warnings/errors depending on severity.
@@ -169,9 +168,7 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_PORT` (default: `8100`)
   - `OKR_BACKEND_ENFORCE_TOKEN` (default: `true`)
   - `OKR_BACKEND_ENFORCE_REQUEST_SIGNING` (default: `true` in production envs, otherwise `false`)
-  - `OKR_BACKEND_SECURITY_STATE_BACKEND` (`database` in production by default, `memory` in non-production by default; supported values: `memory`, `database`, `redis`)
-  - `OKR_BACKEND_SECURITY_STATE_REDIS_URL` (required when backend is `redis`)
-  - `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX` (optional Redis key namespace; default: `okr:security`)
+  - `OKR_BACKEND_SECURITY_STATE_BACKEND` (`database` in production by default, `memory` in non-production by default; supported values: `memory` (non-production only), `database`; `redis` was removed and is rejected at startup)
   - `OKR_BACKEND_SECURITY_STATE_CLEANUP_SECONDS` (default: `60`)
   - `OKR_BACKEND_REQUEST_SIGNING_WINDOW_SECONDS` (default: `300`)
   - `OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS` (default: `60`)
@@ -203,9 +200,8 @@ Backend API (recommended for scale)
   - Job submit endpoint (`POST /v1/jobs`) supports idempotency via `X-OKR-Idempotency-Key`.
   - Quota/backoff rejections return deterministic `429` payloads with `detail.error_code`, `detail.retry_after_seconds`, and `Retry-After` header.
   - Job submit accepted/rejected events are written to DB-backed `audit_event` (with file fallback) for usage reporting and incident review.
-  - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` stores request-signing nonces and backend API rate-limit counters in shared DB tables (`backend_request_nonce`, `backend_rate_limit_counter`) so controls are consistent across replicas.
+  - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` stores request-signing nonces and backend API rate-limit counters in shared DB tables (`backend_request_nonce`, `backend_rate_limit_counter`, created by the `backend_security_state_tables` Alembic migration; the backend does not create them at runtime) so controls are consistent across replicas.
   - Database security convention: database credentials, private network boundaries, and ordinary application authorization are the primary production controls. Any existing row-level security (RLS) policies are defense-in-depth for the dedicated database, not a shared-database tenant-isolation mechanism; do not introduce tenant-discriminator/RLS architecture.
-  - `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` stores nonce/rate-limit counters in shared Redis keys; set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` and optionally `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`.
   - If proxied backend transport fails, runtime behavior is fail-closed (local read/mutation fallback execution is disabled).
   - Direct DB restore is opt-in (`OKR_ENABLE_DIRECT_DB_RESTORE=true`) and intended for controlled non-production scenarios only.
   - In the provided Docker Compose profile, backend API is bound to `127.0.0.1` by default for reduced exposure.

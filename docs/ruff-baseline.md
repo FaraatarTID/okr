@@ -53,14 +53,14 @@ The counts only move down. Never raise a count to make the test pass.
 Reviewed 2026-09-30, by reading each handler and its callers: `backend_app/worker.py` (9 `BLE001`),
 `backend_app/security_state.py` (6 `BLE001`, 1 `S110`, 3 `S608`) and `src/database.py` (1 `S608`). Each is now either
 narrowed or carries a `# noqa: <code> - <reason>` that says what the swallow does. Tests pin that behaviour in
-[tests/test_blind_except_contracts.py](../tests/test_blind_except_contracts.py) (14 tests; 9 of 9 mutations of the handlers killed).
+[tests/test_blind_except_contracts.py](../tests/test_blind_except_contracts.py) (11 tests after the Redis backend and its three tests were removed on 2026-09-30; the "9 of 9 mutations killed" result predates that and was not re-run).
 
 | Where | Decision |
 |---|---|
 | `worker.py` job thread `except BaseException` | Kept. The exception is stored and re-raised in the calling thread, so `SystemExit` is not lost with the thread. |
 | `worker.py` claim, status write, job execution, finalization, prune, reap, queue depth, loop guard | Kept. Each is logged (with traceback, or as a warning for the advisory queue-depth gauge) and the worker continues. Housekeeping retries at the next interval. |
 | `security_state.py` two JSON fallbacks | **Narrowed** from `Exception` to `ValueError`. `json.loads` raises only `ValueError` for bad text, so nothing that was caught before is missed, and an unrelated bug is no longer swallowed. |
-| `security_state.py` Redis load/store/dispose | Kept. `redis` is an optional dependency, so its error types cannot be named here. A failed load returns `None`, which the caller turns into `409`; it never replays a wrong response (tested). |
+| `security_state.py` Redis load/store/dispose | Removed together with the Redis security-state backend (2026-09-30); the database store is the only durable one. |
 | `security_state.py` `dispose` (database) | Kept, best-effort shutdown. |
 | Four `S608` sites | Kept, annotated. Only module-built fragments (`key_clause`, `lock_clause`, a fixed tuple of table names, quoted table metadata) are spliced into the SQL; every value is a bound parameter. This is from reading the four call sites and their inputs, not a security audit. |
 
