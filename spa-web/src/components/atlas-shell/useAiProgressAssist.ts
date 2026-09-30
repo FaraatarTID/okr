@@ -221,7 +221,7 @@ export default function useAiProgressAssist({
         "Given a list of tasks, pick the single best next task to work on.",
         "You MUST return strict JSON with exactly these keys: task_ref, reason, confidence.",
         "task_ref: copy the exact task_ref string from the candidates (e.g. 'task_1'). Do NOT invent new refs.",
-        "reason: one sentence explaining why this task is the best next action.",
+        "reason: one sentence explaining why this task is the best next action, written in the same language as the task titles in the candidates (not English).",
         "confidence: an integer from 0 to 100.",
         "Candidates:",
         JSON.stringify(candidates, null, 0),

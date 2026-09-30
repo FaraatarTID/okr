@@ -150,3 +150,32 @@ def test_empty_actor_skips_the_lookup(monkeypatch):
 
     assert audit._resolve_actor_snapshot("   ")["actor_user_id"] is None
     assert audit._resolve_actor_snapshot(None)["actor_user_id"] is None
+
+
+@pytest.mark.parametrize(
+    "analysis,expected",
+    [
+        # Non-English warning text must not be read as "overdue" by keyword.
+        (
+            {"deadline_state": "overdue", "deadline_warnings": ["مهلت گذشته است"]},
+            "overdue",
+        ),
+        ({"deadline_state": "risk", "deadline_warnings": ["خطر تاخیر"]}, "risk"),
+        ({"deadline_state": "none", "deadline_warnings": ["anything"]}, None),
+        ({"deadline_state": " RISK "}, "risk"),
+        # Older stored analyses have no deadline_state: keep the keyword fallback.
+        ({"deadline_warnings": ["KR-2 overdue"]}, "overdue"),
+        ({"deadline_warnings": ["slipping"]}, "risk"),
+        ({"deadline_warnings": []}, None),
+        ({"deadline_state": "bogus", "deadline_warnings": ["slipping"]}, "risk"),
+    ],
+)
+def test_atlas_snapshot_deadline_state_is_language_independent(analysis, expected):
+    import json
+
+    from src.domain.read_queries import _atlas_extract_ai_snapshot_fields
+
+    raw = json.dumps(analysis, ensure_ascii=False)
+
+    assert transport._atlas_extract_ai_snapshot_fields(raw)[1] == expected
+    assert _atlas_extract_ai_snapshot_fields(raw)[1] == expected

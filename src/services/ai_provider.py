@@ -31,6 +31,19 @@ _DEFAULT_AI_PROVIDER_OUTPUT_MAX_BYTES = 131_072
 _DEFAULT_AI_ALLOWED_PROVIDERS = frozenset({"gemini", "openai_compatible"})
 _LOGGER = logging.getLogger(__name__)
 
+# Applied to every provider call, so each AI output (node analysis, team coach,
+# strategic outlook, report summaries, task suggestions) follows the language
+# the user wrote their OKR items in. The task prompts are written in English;
+# without this the model tends to answer in English regardless of the data.
+LANGUAGE_INSTRUCTION = (
+    "Language rule: write every human-readable string value in the same "
+    "language as the user's OKR content in the request (item titles, "
+    "descriptions, comments and logs). Do not switch to English because these "
+    "instructions are in English. If the content mixes languages, use the "
+    "language of the item titles. Keep JSON keys, identifiers (for example "
+    "task_ref), enum codes, numbers and dates exactly as specified."
+)
+
 _PROVIDER_ALIASES = {
     "gemini": "gemini",
     "google": "gemini",
@@ -385,7 +398,10 @@ def _call_gemini_json(prompt: str) -> Dict[str, Any]:
         response = client.models.generate_content(
             model=get_ai_model(),
             contents=prompt,
-            config={"response_mime_type": "application/json"},
+            config={
+                "response_mime_type": "application/json",
+                "system_instruction": LANGUAGE_INSTRUCTION,
+            },
         )
         text = getattr(response, "text", None)
         if not text:
@@ -440,7 +456,10 @@ def _call_openai_compatible_json(prompt: str) -> Dict[str, Any]:
         "messages": [
             {
                 "role": "system",
-                "content": "Return valid JSON only. Do not use markdown fences.",
+                "content": (
+                    "Return valid JSON only. Do not use markdown fences. "
+                    + LANGUAGE_INSTRUCTION
+                ),
             },
             {"role": "user", "content": prompt},
         ],
