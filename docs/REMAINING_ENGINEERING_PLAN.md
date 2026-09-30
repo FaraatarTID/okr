@@ -601,6 +601,31 @@ What it does not show:
 
 To repeat it for a build: `gh workflow run verify-ghcr-signatures.yml -f release_sha=<full sha> -f manifest_run_id=<publish run id>`.
 
+### Credentials in stored job errors (2026-09-30)
+
+Question left open earlier: can the error text stored on a failed job (`AsyncJob.error_text`, returned by
+`GET /v1/jobs/{id}` to the job's actor) carry sensitive data?
+
+**Yes, it could.** Running a real failing call with a key in the provider URL's query string
+(`AI_BASE_URL=...?api_key=...`) produced `AI provider request failed: ... Max retries exceeded with url:
+/v1?api_key=<value>...`: the `requests` exception echoes the URL, and the text was stored and served. The
+configured `Authorization` header key and URL user info did not appear in that run; the query-string key did.
+
+Fixed in the same change:
+
+- `src/observability_redaction.py` gains `redact_error_text`, for free text: exact known secrets, URL user info,
+  credential-named query parameters, `Bearer`/`Basic` tokens.
+- `backend_app/jobs.py` redacts before truncating, on every path that writes `error_text` (retry, terminal, cancel).
+  Redacting first matters: cutting first would leave a readable prefix of a secret that straddles the limit.
+- `src/services/ai_provider.py` redacts the four provider error strings, passing the configured key and base URL as
+  known secrets.
+- `tests/test_error_text_redaction.py`: 25 tests; 13 of 13 mutations killed.
+
+Limits: it is pattern-based, so a credential with an unusual name in an unusual place passes; the pattern list is a
+judgement, not a proof. Only the provider call sites and the job store were changed: `ai_service.py` still has
+about 20 broad handlers that put `exc` text into return values, which were not audited here. The PDF job's error is
+a fixed string. Existing rows already stored are not rewritten.
+
 ## Verification drills
 
 `docs/ARCHITECTURE_DELIVERY_SYSTEM.md` requires an item's purpose to be confirmed
