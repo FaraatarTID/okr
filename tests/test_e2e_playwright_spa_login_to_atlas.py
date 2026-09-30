@@ -1578,12 +1578,14 @@ def test_atlas_deep_link_and_rendered_alignment(e2e_stack: E2EStack) -> None:
             # Load a supported cycle/node deep link directly, then reload it.
             deep_link = f"{e2e_stack.app_url}/?cycle=1&sel=goal_1"
             page.goto(deep_link, wait_until="domcontentloaded", timeout=90_000)
-            selected_goal = page.locator("button.atlas-node-item.is-active")
+            selected_goal = page.locator(
+                "button.orbit-map__node-label[aria-pressed=true]"
+            )
             expect(selected_goal).to_contain_text("E2E Admin Goal", timeout=90_000)
             page.reload(wait_until="domcontentloaded", timeout=90_000)
-            expect(page.locator("button.atlas-node-item.is-active")).to_contain_text(
-                "E2E Admin Goal", timeout=90_000
-            )
+            expect(
+                page.locator("button.orbit-map__node-label[aria-pressed=true]")
+            ).to_contain_text("E2E Admin Goal", timeout=90_000)
 
             # Alignment is asserted within the rendered Inspector, using the
             # objective's seeded parent and child hierarchy.
@@ -1608,7 +1610,7 @@ def test_atlas_deep_link_and_rendered_alignment(e2e_stack: E2EStack) -> None:
                     alignment_statuses.append(int(response.status))
 
             page.on("response", _capture_alignment_response)
-            page.locator("button.atlas-node-item").filter(
+            page.locator("button.orbit-map__node-label").filter(
                 has_text="E2E Admin Objective"
             ).click()
             inspector = page.get_by_role("dialog", name="Inspector")
@@ -1658,7 +1660,7 @@ def test_inspector_work_history_rtl(e2e_stack: E2EStack) -> None:
                 wait_until="domcontentloaded",
                 timeout=90_000,
             )
-            page.locator("button.atlas-node-item").filter(
+            page.locator("button.orbit-map__node-label").filter(
                 has_text="E2E Admin Focus Task"
             ).click()
             inspector = page.get_by_role("dialog", name="Inspector")
