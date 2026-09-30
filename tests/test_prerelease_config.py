@@ -34,8 +34,6 @@ def _valid_runtime_env() -> dict[str, str]:
         "BFF_PUBLIC_ORIGIN": "https://prerelease.invalid",
         "BFF_COOKIE_SECURE": "true",
         "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "true",
-        "OKR_BACKEND_PROXY_MUTATIONS": "true",
-        "OKR_BACKEND_PROXY_READS": "true",
         "OKR_BACKEND_SECURITY_STATE_BACKEND": "database",
         "OKR_BACKEND_BIND_ADDRESS": "127.0.0.1",
         "OKR_ALLOW_LOCAL_MUTATION_FALLBACK": "false",

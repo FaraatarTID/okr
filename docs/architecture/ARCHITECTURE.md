@@ -23,7 +23,7 @@ Runtime topology:
 - Persistence: Alembic migrations in `alembic/`
 - External integrations: `src/services/ai_service.py`, `src/services/pdf_service.py`
 - Shared business helpers: `src/utils/deadline_utils.py`
-- Backend services & launcher:
+- Backend services:
   - `backend_app/main.py`, `backend_app/worker.py`, `backend_app/jobs.py`
 
 ## Runtime Topology
@@ -221,7 +221,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 
 6. Async job flow
 
-- `run_job_and_wait` submits to `backend-api` when backend mode is enabled.
+- `run_job_and_wait` (`src/services/job_service.py`) executes AI/PDF jobs in-process; queued jobs submitted through `POST /v1/jobs` are claimed by `backend-worker`.
 - Job lifecycle: `pending -> running -> succeeded|failed|cancelled`.
 - Worker writes result/error payloads into `async_job`.
 - Frontend reads job state and surfaces final output.

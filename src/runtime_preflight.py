@@ -136,8 +136,6 @@ def evaluate_runtime_preflight(
     ai_provider_ready: Optional[bool] = None,
     ai_provider_message: Optional[str] = None,
     backend_api_url: Optional[str] = None,
-    backend_proxy_mutations: bool = False,
-    backend_proxy_reads: bool = False,
     allow_local_backend_mutation_fallback: Optional[bool] = None,
     allow_local_backend_read_fallback: Optional[bool] = None,
     allow_local_backend_fallback: Optional[bool] = None,
@@ -190,11 +188,13 @@ def evaluate_runtime_preflight(
     env_name = str(runtime_env or "development").strip().lower()
     is_production = env_name in {"prod", "production"}
 
-    # Resolve embedded backend status
+    # "auto" is the value the backend-api/worker runtime passes for itself.
     is_embedded = backend_url.lower() == "auto"
 
     if is_embedded:
-        report.infos.append("Backend mode: Embedded (auto-launching background API).")
+        report.infos.append(
+            "Backend mode: this process is the backend runtime (no remote backend URL)."
+        )
     elif not backend_url:
         report.errors.append(
             "OKR_BACKEND_API_URL is required for backend-owned mutations."

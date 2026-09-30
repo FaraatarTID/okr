@@ -80,12 +80,11 @@ Key wiring:
 
 - `OKR_BACKEND_API_URL` from `spa-web`/`spa-bff` -> `backend-api`
 - `OKR_BACKEND_SERVICE_TOKEN` must match across caller and backend API
-- `OKR_BACKEND_PROXY_MUTATIONS=true` keeps frontend write flows routed via backend API
 - backend API should remain private/internal, not internet-exposed
 
 Technical behavior (current):
 
-- Frontend read and write paths route through backend API (`OKR_BACKEND_PROXY_MUTATIONS=true`, `OKR_BACKEND_PROXY_READS=true`).
+- Frontend read and write paths route through `spa-bff` to `backend-api`.
 - If backend is unavailable, runtime is fail-closed (local read/mutation fallback execution is disabled).
 - AI/PDF heavy operations are executed asynchronously by `backend-worker` through `async_job`.
 - In backend-assisted mode, admin backup restore is intentionally disabled; use backend maintenance/runbook procedures.

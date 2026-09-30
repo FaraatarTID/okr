@@ -156,8 +156,6 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_SIGNING_SECRET_PREVIOUS` (optional): previous signing secret, accepted during a rotation overlap window; remove after retirement.
   - `OKR_BACKEND_SIGNING_KEY_ID` (optional): advertised key ID; when set, callers must send `x-okr-key-id` and unknown IDs are rejected. Rotation runbook: `DEPLOYMENT.md`.
   - `OKR_BACKEND_DEFAULT_ACTOR`: Fallback actor for system-initiated AI requests; default: `system`.
-  - `OKR_BACKEND_PROXY_MUTATIONS` (required secure value: `true`): frontend write operations are backend-owned in runtime.
-  - `OKR_BACKEND_PROXY_READS` (required secure value: `true`): frontend read operations are backend-owned in runtime.
   - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK` (required secure value: `false`): retained as deployment-policy gate; runtime executes fail-closed.
   - `OKR_ALLOW_LOCAL_READ_FALLBACK` (required secure value: `false`): retained as deployment-policy gate; runtime executes fail-closed.
   - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (legacy key): keep `false`; runtime local fallback is not used.
@@ -196,7 +194,7 @@ Backend API (recommended for scale)
     - Worker loop catches generic iteration errors to avoid queue poison-pill stalls.
 - Notes:
   - With `OKR_BACKEND_API_URL` set, frontend read/write flows (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes, Atlas/leadership reads) and heavy AI/PDF workflows run through backend services.
-  - `OKR_BACKEND_PROXY_MUTATIONS=true` and `OKR_BACKEND_PROXY_READS=true` keep application authority in backend API contracts.
+  - `OKR_BACKEND_PROXY_MUTATIONS` and `OKR_BACKEND_PROXY_READS` were removed (the in-process Python HTTP proxy layer no longer exists); if still present in an environment file they are ignored.
   - Job submit endpoint (`POST /v1/jobs`) supports idempotency via `X-OKR-Idempotency-Key`.
   - Quota/backoff rejections return deterministic `429` payloads with `detail.error_code`, `detail.retry_after_seconds`, and `Retry-After` header.
   - Job submit accepted/rejected events are written to DB-backed `audit_event` (with file fallback) for usage reporting and incident review.

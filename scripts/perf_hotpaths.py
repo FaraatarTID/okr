@@ -32,8 +32,6 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 # Run benchmarks against local CRUD/database calls.
-os.environ.setdefault("OKR_BACKEND_PROXY_READS", "false")
-os.environ.setdefault("OKR_BACKEND_PROXY_MUTATIONS", "false")
 os.environ.setdefault("OKR_BACKEND_API_URL", "")
 
 import src.database as database
