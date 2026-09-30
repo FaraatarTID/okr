@@ -11,6 +11,7 @@ from src.utils.time_utils import utc_now, utc_now_naive
 
 _MODULE_LOGGER = logging.getLogger(__name__)
 _AUDIT_DB_FAILURE_REPORTED = False
+_AUDIT_ACTOR_LOOKUP_FAILURE_REPORTED = False
 
 
 def _get_logger() -> logging.Logger:
@@ -146,7 +147,15 @@ def _resolve_actor_snapshot(actor: Optional[str]) -> dict:
                     str(raw_role) if raw_role else None
                 )
                 actor_team_id = getattr(user, "team_id", None)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - an audit write must not fail because the actor lookup did; identity is left empty
+        global _AUDIT_ACTOR_LOOKUP_FAILURE_REPORTED
+        if not _AUDIT_ACTOR_LOOKUP_FAILURE_REPORTED:
+            _AUDIT_ACTOR_LOOKUP_FAILURE_REPORTED = True
+            _MODULE_LOGGER.warning(
+                "Audit actor lookup failed; recording events without actor identity "
+                "(further failures are logged at debug)."
+            )
+        _MODULE_LOGGER.debug("Audit actor lookup failure details", exc_info=exc)
         return {
             "actor_user_id": None,
             "actor_role": None,
@@ -191,7 +200,7 @@ def _write_audit_event_to_db(payload: dict) -> None:
                     created_at=utc_now_naive(),
                 )
             )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - the database sink is optional; failure is logged and the stream sink continues
         if not _AUDIT_DB_FAILURE_REPORTED:
             _AUDIT_DB_FAILURE_REPORTED = True
             _MODULE_LOGGER.warning(

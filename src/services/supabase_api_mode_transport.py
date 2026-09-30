@@ -149,7 +149,7 @@ def shutdown_close_transport() -> None:
         if _HTTP_CLIENT is not None:
             try:
                 _HTTP_CLIENT.close()
-            except Exception:  # pragma: no cover - best-effort cleanup
+            except Exception:  # noqa: BLE001  # pragma: no cover - best-effort cleanup, logged; the client is dropped either way
                 logger.debug("Supabase HTTP client close failed", exc_info=True)
             _HTTP_CLIENT = None
             _HTTP_CLIENT_CONFIG = None
@@ -390,7 +390,7 @@ def _rest_delete(table: str, *, match_query: dict[str, str]) -> int:
 def _as_int(value: Any, default: int = 0) -> int:
     try:
         return int(value)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return int(default)
 
 
@@ -405,7 +405,7 @@ def _parse_dt(value: Any) -> Optional[datetime]:
     normalized = text.replace("Z", "+00:00")
     try:
         dt = datetime.fromisoformat(normalized)
-    except Exception:
+    except ValueError:
         return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
@@ -563,7 +563,10 @@ def _atlas_extract_ai_snapshot_fields(
         return ai_overall_score, ai_deadline_state
     try:
         analysis = json.loads(raw_analysis)
-    except Exception:
+    except (
+        ValueError,
+        RecursionError,
+    ):  # RecursionError: pathologically nested stored JSON
         return ai_overall_score, ai_deadline_state
     if not isinstance(analysis, dict):
         return ai_overall_score, ai_deadline_state
@@ -571,7 +574,7 @@ def _atlas_extract_ai_snapshot_fields(
     if score_raw is not None:
         try:
             ai_overall_score = max(0, min(100, int(float(score_raw))))
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             ai_overall_score = None
     warnings_list = analysis.get("deadline_warnings") or []
     if isinstance(warnings_list, list) and warnings_list:

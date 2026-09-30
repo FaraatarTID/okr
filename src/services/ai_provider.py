@@ -391,7 +391,7 @@ def _call_gemini_json(prompt: str) -> Dict[str, Any]:
         if not text:
             return {"error": "Gemini returned an empty response."}
         return _parse_json_payload(text, "Gemini")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - the SDK raises arbitrary types; the failure is returned as redacted error text
         return {"error": f"Gemini request failed: {_safe_error(exc, api_key)}"}
 
 
@@ -455,7 +455,7 @@ def _call_openai_compatible_json(prompt: str) -> Dict[str, Any]:
             retries=1,
             timeout=(5.0, get_openai_request_timeout_seconds()),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - requests/urllib3/DNS raise many types; returned as redacted error text
         return {
             "error": f"AI provider request failed: {_safe_error(exc, api_key, base_url)}"
         }
@@ -474,7 +474,7 @@ def _call_openai_compatible_json(prompt: str) -> Dict[str, Any]:
 
     try:
         body = response.json()
-    except Exception as exc:
+    except ValueError as exc:  # requests' JSONDecodeError subclasses ValueError
         return {
             "error": f"AI provider response is not valid JSON: {_safe_error(exc, api_key, base_url)}"
         }
