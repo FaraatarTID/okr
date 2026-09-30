@@ -48,24 +48,42 @@ Tests that patched `backend_main._resolve_scope_for_actor` to influence the serv
 scope through the facade, so patches on the facade keep working there until those modules move.
 ### Measured cost of the remaining modules (2026-09-30)
 
-From a text search of `backend_app/` and `tests/` (dynamic access is not counted). "Patch sites" are
-`monkeypatch.setattr(backend_main, "<name>", ...)` calls in tests on a name the module reaches through the facade.
+Counted with an AST scan of `tests/`: every `monkeypatch.setattr` / `delattr` call whose target is the facade
+(`backend_main`, `_backend_main`, `main_module`, `main`) and whose attribute name is a string literal. **201 sites on
+63 distinct names in 19 test files.** A first version of this table, from a line-based text search, reported about 100
+sites: it missed calls whose arguments span several lines, and this section replaces it.
 
-| Module | Names reached through the facade | Of those, patched by tests | Patch sites | Patched names |
-|---|---|---|---|---|
-| `main_runtime_helpers.py` | 2 | 1 | 15 | `get_session_context`; also holds the patched-resolver seam (`_resolve_scope_for_actor` versus `_runtime`) |
-| `main_workflow_handlers.py` | 16 | 5 | 17 | `_resolve_scope_for_actor`, `create_check_in`, `delete_alignment`, `is_supabase_api_mode_enabled`, `update_experiment` |
-| `main_mutation_handlers.py` | 13 | 7 | 20 | `create_goal`, `create_key_result`, `create_objective`, `create_task`, `create_user`, `is_supabase_api_mode_enabled`, `update_task` |
-| `read_query_helpers.py` (not in the table above) | 55 | 8 | 24 | `_resolve_scope_for_actor`, `_serialize_task`, `get_active_cycles`, `get_all_cycles`, `get_all_users`, `get_session_context`, `get_user_by_username`, `summarize_audit_events` |
+For each module the scan lists the names it reads through the facade (`backend_main.x`, `main.x`,
+`_resolve_backend_main().x`, `getattr(main, "x")`) and how many test patch sites target one of those names.
+
+| Module | Names read through the facade | Of those, patched by tests | Patch sites |
+|---|---|---|---|
+| `main_runtime_helpers.py` | 11 | 5 | 52 |
+| `main_workflow_handlers.py` | 16 | 5 | 29 |
+| `main_mutation_handlers.py` | 13 | 8 | 22 |
+| `read_query_helpers.py` (not in the first inventory) | 55 | 21 | 66 |
+| `routers/*` | 85 | 28 | 125 |
+
+The columns overlap: one patch site can target a name that several modules read, so the rows do not add up to 201.
+
+The most patched names are `init_database` (18), `_resolve_actor_scope` (18), `get_session_context` (17),
+`_resolve_scope_for_actor` (12) and `is_supabase_api_mode_enabled` (9).
 
 Why this is not a per-module job like `security.py`:
 
-- `is_supabase_api_mode_enabled` (8 patch sites) and `get_session_context` (15 patch sites) are read through the facade by several of these modules at once. Moving one module makes a test that patches the facade stop affecting it: it fails, or passes against the real function. Both seams have to move together, with their tests, in one change.
-- The routers still bind `Depends(main.require_service_access)`, and three test files override it on the facade.
-- `read_query_helpers.py` reaches the facade 55 ways and was not counted in the first inventory.
+- The same few names are read through the facade by several modules at once. Moving one module makes a test that
+  patches the facade stop affecting it: it fails, or it passes against the real function. The seams have to move
+  together with their tests.
+- The routers bind `Depends(main.require_service_access)` and three test files override it on the facade.
+- `_resolve_actor_scope` and `get_session_context` are patched together in the same tests (15 of the 17
+  `get_session_context` sites are in `tests/test_backend_mutation_api.py`, and a search of the 12 lines after each found a
+  `_resolve_actor_scope` patch for all 15: read as one seam, not two; that window is a heuristic, not a parse).
 
-Not done, on purpose: no module was moved in this pass. The counts are a text search of one commit, not a proof of what
-a move would break.
+Limits of the scan: nine patch calls use a non-literal name and are not counted; patches made through another alias,
+through `monkeypatch.setitem` on `sys.modules`, or inside helper functions that take the module as a parameter are not
+seen; and a read is counted by name, not by whether that code path runs. The counts are from one commit.
+
+Not done, on purpose: no module was moved in this pass.
 
 ## Launcher surfaces
 
