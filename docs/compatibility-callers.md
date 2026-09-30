@@ -21,12 +21,19 @@ contracts directly. No production, CLI, or deployment caller was found.
 
 The facade boundary and app cache suites currently pass 29 combined tests. This confirms that the compatibility surface protects active cache, bootstrap, serialization, and shell-runtime behavior and must be migrated deliberately.
 
-## `backend_app.main` facade (P4.5, in progress)
+## `backend_app.main` facade (P4.5, paused on purpose)
 
 `backend_app/main.py` re-exports names that routers, handlers and tests reach through `main.<name>`. The
 retirement is one module per commit: move the caller to the real owner, then drop the matching re-export or
 `noqa: F401` once no caller remains. The lists below are from a text search of `backend_app/` on 2026-09-29; like
 the sweep above, they do not prove dynamic imports.
+
+**Decision (2026-09-30): the remaining three modules and the routers are not being moved.** The cost is measured below: 201 patch
+sites in 19 test files, most of them behind `_resolve_actor_scope`, `get_session_context` and `init_database`. Moving the modules
+means rewriting those tests and retesting the routes, and the payoff is structural (a cleaner import graph), with no behaviour or
+security gain. `security.py` and `authentication.py` were the two whose facade lookup sat on the authorization path, and those are
+done. Revisit if a module here has to change for another reason, or if the facade starts causing import-cycle failures; then move
+that one module together with the tests that patch it, as the two done modules were.
 
 | Module | Reaches `backend_app.main` | Status |
 |---|---|---|
