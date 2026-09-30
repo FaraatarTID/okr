@@ -1612,7 +1612,7 @@ def test_atlas_deep_link_and_rendered_alignment(e2e_stack: E2EStack) -> None:
             page.on("response", _capture_alignment_response)
             page.locator("button.orbit-map__node-label").filter(
                 has_text="E2E Admin Objective"
-            ).click()
+            ).dblclick()
             inspector = page.get_by_role("dialog", name="Inspector")
             expect(inspector).to_be_visible(timeout=15_000)
             expect(inspector.get_by_text("Alignment", exact=True)).to_be_visible(
@@ -1662,7 +1662,7 @@ def test_inspector_work_history_rtl(e2e_stack: E2EStack) -> None:
             )
             page.locator("button.orbit-map__node-label").filter(
                 has_text="E2E Admin Focus Task"
-            ).click()
+            ).dblclick()
             inspector = page.get_by_role("dialog", name="Inspector")
             expect(inspector).to_be_visible(timeout=90_000)
             work_history = inspector.get_by_text("Work History", exact=True)
