@@ -45,7 +45,8 @@ ALLOWED_LICENSES = {
 # psycopg / psycopg-binary (LGPL-3.0-only) replaced psycopg2-binary (LGPL with exceptions), which the
 # generic "LGPL" entries above already admitted. Same license family, used as an unmodified
 # dynamically imported library. This entry is a policy acceptance made by the change that swapped
-# the driver; it has not had legal review, and whoever owns license policy should confirm it.
+# the driver. The repository owner confirmed the exception on 2026-09-30. That is a policy confirmation,
+# not a legal review: none has been done, and if one is required it is still outstanding.
 PYTHON_LICENSE_EXCEPTIONS: dict[str, frozenset[str]] = {
     "psycopg": frozenset({"LGPL-3.0-only"}),
     "psycopg-binary": frozenset({"LGPL-3.0-only"}),

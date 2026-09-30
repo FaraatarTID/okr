@@ -526,8 +526,9 @@ Phase 4, because it needs a decision before it needs code.
   dominates (P0-1 note above). Revisit only with a PostgreSQL measurement showing the scope round-trips
   matter, and with invalidation on every account mutation, not on the version alone.
 - **P4.4, done.** [supabase-api-freeze.md](supabase-api-freeze.md) and
-  `tests/test_supabase_api_freeze.py`. The deprecation decision is left open on purpose.
-- **P4.5, partly done (2 of 5 modules).** `security.py` and `authentication.py` no longer reach `backend_app.main`
+  `tests/test_supabase_api_freeze.py`. Deprecation was approved by the repository owner on 2026-09-30, with no removal date:
+  the three questions that gate removal (who still runs the mode, a support date, a data migration path) are unanswered.
+- **P4.5, partly done (2 of 5 modules); the remainder is deliberately not started (decided 2026-09-30).** `security.py` and `authentication.py` no longer reach `backend_app.main`
   (#198). Still reaching it: `main_runtime_helpers.py`, `main_workflow_handlers.py`, `main_mutation_handlers.py`, and
   every router through `main.<name>`. The facade cannot go while tests patch it: measured on 2026-09-30 by an AST scan, 201 `setattr(backend_main, "<name>", ...)`
   sites on 63 distinct names in 19 test files (the earlier "about 20 tests" undercounted, and so did the first recount, a
@@ -559,8 +560,12 @@ Phase 4, because it needs a decision before it needs code.
     pooler config now sets `max_prepared_statements = 0` and `tests/test_postgres_pooler_prepared_statements.py`
     asserts that setting is in effect before it asserts anything else. Removing the option from any of the three
     engine builders fails those tests (checked by mutation).
-  - **Not verified:** the production pooler. Supabase or Darkube PgBouncer version and its
-    `max_prepared_statements` are unknown to this repository; `prepare_threshold=None` is safe on any of them.
+  - **Not verified, and decided not to chase (2026-09-30):** the production pooler. Supabase or Darkube PgBouncer version and its
+    `max_prepared_statements` are unknown to this repository. `prepare_threshold=None` is on every engine (application, security
+    state, fleet control plane, Alembic, the scripts) and is safe on any pooler setting, so knowing the value would not change a
+    line of code. The check would only matter if someone removed that option; the tests fail if they do. If you want the value
+    anyway: on PgBouncer, connect to the `pgbouncer` admin database and run `SHOW VERSION;` and `SHOW CONFIG;` (look at
+    `max_prepared_statements`); on Supavisor or another pooler the setting has a different name.
     Behaviour under a real production workload, and any psycopg 3 type-adaptation difference in code paths
     without a PostgreSQL test (for example JSON columns, `text[]`), were not exercised beyond the existing
     PostgreSQL suites.
