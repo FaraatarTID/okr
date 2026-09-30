@@ -11,7 +11,6 @@ describe("AtlasModeControlsPanel", () => {
       <AtlasModeControlsPanel
         cycleLabel="Q3-2026"
         snapshotPending={false}
-        snapshotPollIntervalMs={45000}
         cycleId="7"
         cycleOptions={[
           { id: 7, label: "Q3-2026" },
@@ -44,7 +43,7 @@ describe("AtlasModeControlsPanel", () => {
     expect(screen.getByText("owner parse error")).toBeInTheDocument();
     expect(screen.getByText("cycle resolve error")).toBeInTheDocument();
     expect(screen.getByText("snapshot error")).toBeInTheDocument();
-    expect(screen.getByText(/Auto-sync every 45s/)).toBeInTheDocument();
+    expect(screen.queryByText(/Auto-sync/)).not.toBeInTheDocument();
   });
 
   it("emits callbacks for cycle/owner/lens changes", async () => {
@@ -57,7 +56,6 @@ describe("AtlasModeControlsPanel", () => {
       <AtlasModeControlsPanel
         cycleLabel="Q3-2026"
         snapshotPending
-        snapshotPollIntervalMs={45000}
         cycleId=""
         cycleOptions={[
           { id: 42, label: "Q4-2026" },
@@ -100,7 +98,6 @@ describe("AtlasModeControlsPanel", () => {
       <AtlasModeControlsPanel
         cycleLabel="Q3-2026"
         snapshotPending={false}
-        snapshotPollIntervalMs={45000}
         cycleId="7"
         cycleOptions={[{ id: 7, label: "Q3-2026" }]}
         canManageCycleSelection={false}
@@ -130,7 +127,6 @@ describe("AtlasModeControlsPanel", () => {
       <AtlasModeControlsPanel
         cycleLabel="Q1-2026"
         snapshotPending={false}
-        snapshotPollIntervalMs={45000}
         cycleId="8"
         cycleOptions={[
           { id: 7, label: "Cycle Manager#1", isActive: false },

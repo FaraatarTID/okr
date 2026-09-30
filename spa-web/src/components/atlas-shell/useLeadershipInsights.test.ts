@@ -137,7 +137,31 @@ describe("useLeadershipInsights", () => {
     expect(result.current.strategyPulseSummary?.mitigationSteps).toContain("Reduce parallel WIP");
   });
 
-  it("clears team-coach and strategy-pulse views when mode leaves dashboard", async () => {
+
+  it("reloads metrics silently: no pending flag, and a failure keeps the last good numbers", async () => {
+    const readLeadershipMetricsMock = vi.mocked(api.readLeadershipMetrics);
+    readLeadershipMetricsMock.mockResolvedValue(buildMetrics() as never);
+
+    const { result } = renderHook(() =>
+      useLeadershipInsights({ mode: "dashboard", user: baseUser, parsedCycleId: 7, cycleLabel: "Q1-2026" }),
+    );
+    await act(async () => { await result.current.loadLeadershipMetricsSnapshot(baseUser); });
+    const before = result.current.leadershipMetrics;
+    expect(before?.total_krs).toBe(10);
+
+    await act(async () => { await result.current.loadLeadershipMetricsSnapshot(baseUser, { silent: true }); });
+    expect(result.current.leadershipPending).toBe(false);
+    expect(result.current.leadershipMetrics).toBe(before);
+
+    readLeadershipMetricsMock.mockRejectedValue(new Error("boom"));
+    await act(async () => { await result.current.loadLeadershipMetricsSnapshot(baseUser, { silent: true }); });
+    expect(result.current.leadershipMetrics).toBe(before);
+    expect(result.current.leadershipError).toBe("");
+
+    await act(async () => { await result.current.loadLeadershipMetricsSnapshot(baseUser); });
+    expect(result.current.leadershipError).toBe("boom");
+    expect(result.current.leadershipMetrics).toBeNull();
+  });  it("clears team-coach and strategy-pulse views when mode leaves dashboard", async () => {
     const readLeadershipMetricsMock = vi.mocked(api.readLeadershipMetrics);
     readLeadershipMetricsMock.mockResolvedValue(buildMetrics() as never);
 

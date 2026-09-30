@@ -17,7 +17,6 @@ type CycleOption = {
 type AtlasModeControlsPanelProps = {
   cycleLabel: string;
   snapshotPending: boolean;
-  snapshotPollIntervalMs: number;
   cycleId: string;
   cycleOptions: CycleOption[];
   canManageCycleSelection: boolean;
@@ -38,7 +37,6 @@ type AtlasModeControlsPanelProps = {
 export default function AtlasModeControlsPanel({
   cycleLabel,
   snapshotPending,
-  snapshotPollIntervalMs,
   cycleId,
   cycleOptions,
   canManageCycleSelection,
@@ -148,8 +146,6 @@ export default function AtlasModeControlsPanel({
     applyOwnerIds([]);
   };
 
-  const pollSeconds = Math.max(1, Math.floor(snapshotPollIntervalMs / 1000));
-
   return (
     <section
       className="panel"
@@ -157,7 +153,7 @@ export default function AtlasModeControlsPanel({
     >
       <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
         Cycle: <strong>{cycleLabel}</strong>
-        {snapshotPending ? " * Loading..." : ` * Auto-sync every ${pollSeconds}s`}
+        {snapshotPending ? " * Loading..." : null}
       </div>
       <div
         style={{

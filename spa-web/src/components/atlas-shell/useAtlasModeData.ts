@@ -52,10 +52,24 @@ type UseAtlasModeDataInput = {
   parsedCycleId: number | null;
   setWeeklyDraft: Dispatch<SetStateAction<{ p1: string; p2: string; p3: string }>>;
   setRetroDraft: Dispatch<SetStateAction<{ content: string; sentiment: string }>>;
-  loadLeadershipMetricsSnapshot: (activeUser: AuthUser) => Promise<unknown>;
+  loadLeadershipMetricsSnapshot: (
+    activeUser: AuthUser,
+    options?: { silent?: boolean },
+  ) => Promise<unknown>;
 };
 
+/**
+ * `silent` is for the background refresh: it keeps what is on screen, shows no
+ * "Loading..." and no error, and leaves the next tick to try again.
+ */
+type LoadModeDataOptions = { silent?: boolean };
+
 const DASHBOARD_REFRESH_INTERVAL_MS = 30_000;
+
+/** Keep the previous array when a refresh returned identical content, so nothing re-renders. */
+function keepIfSame<T>(previous: T[], next: T[]): T[] {
+  return JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+}
 
 export default function useAtlasModeData({
   mode,
@@ -82,12 +96,19 @@ export default function useAtlasModeData({
   const dashboardRefreshInFlightRef = useRef(false);
 
   const loadModeData = useCallback(
-    async (activeUser: AuthUser, nextMode: string): Promise<void> => {
+    async (
+      activeUser: AuthUser,
+      nextMode: string,
+      options: LoadModeDataOptions = {},
+    ): Promise<void> => {
       if (nextMode === "atlas" || nextMode === "admin") {
         return;
       }
-      setModeDataPending(true);
-      setModeDataError("");
+      const silent = options.silent === true;
+      if (!silent) {
+        setModeDataPending(true);
+        setModeDataError("");
+      }
       try {
         if (nextMode === "weekly") {
           const weekStart = `${startOfWeekIso()}T00:00:00`;
@@ -263,16 +284,26 @@ export default function useAtlasModeData({
               },
             }),
           ]);
-          setTimelineTasks(tasksPayload.tasks || []);
-          setTimelineLogs(logsPayload.work_logs || []);
+          const nextTasks = tasksPayload.tasks || [];
+          const nextLogs = logsPayload.work_logs || [];
+          setTimelineTasks((previous) => keepIfSame(previous, nextTasks));
+          setTimelineLogs((previous) => keepIfSame(previous, nextLogs));
           if (nextMode === "dashboard") {
-            await loadLeadershipMetricsSnapshot(activeUser);
+            if (silent) {
+              await loadLeadershipMetricsSnapshot(activeUser, { silent: true });
+            } else {
+              await loadLeadershipMetricsSnapshot(activeUser);
+            }
           }
         }
       } catch (error) {
-        setModeDataError(String(error instanceof Error ? error.message : error));
+        if (!silent) {
+          setModeDataError(String(error instanceof Error ? error.message : error));
+        }
       } finally {
-        setModeDataPending(false);
+        if (!silent) {
+          setModeDataPending(false);
+        }
       }
     },
     [loadLeadershipMetricsSnapshot, parsedCycleId, setRetroDraft, setWeeklyDraft],
@@ -288,7 +319,7 @@ export default function useAtlasModeData({
       }
       dashboardRefreshInFlightRef.current = true;
       try {
-        await loadModeData(activeUser, activeMode);
+        await loadModeData(activeUser, activeMode, { silent: true });
       } finally {
         dashboardRefreshInFlightRef.current = false;
       }

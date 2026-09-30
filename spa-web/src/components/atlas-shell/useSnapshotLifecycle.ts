@@ -57,7 +57,12 @@ export default function useSnapshotLifecycle({
         owner_ids: ownerIds,
       });
       if (snapshotRequestIdRef.current === requestId) {
-        setSnapshotPayload(payload);
+        // The 45 s poll usually returns exactly what is already on screen. A new
+        // object would re-run every memo and redraw the map for nothing, so the
+        // previous reference is kept when the content is identical.
+        setSnapshotPayload((previous) =>
+          previous !== null && JSON.stringify(previous) === JSON.stringify(payload) ? previous : payload,
+        );
       }
     },
     [ownerIds, ownerIdsError, parsedCycleId],
@@ -144,7 +149,6 @@ export default function useSnapshotLifecycle({
     snapshotPending,
     snapshotError,
     snapshotPayload,
-    snapshotPollIntervalMs,
     clearSnapshot,
     loadSnapshotForUser,
   };

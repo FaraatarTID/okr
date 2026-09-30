@@ -197,7 +197,114 @@ describe("useAtlasModeData", () => {
     expect(readBackendQueryMock).toHaveBeenCalledTimes(2);
   });
 
-  it("auto-loads mode data when user enters non-atlas/non-admin mode", async () => {
+
+  it("refreshes dashboard data in the background without a Loading state or an error", async () => {
+    const readBackendQueryMock = vi.mocked(api.readBackendQuery);
+    const loadLeadershipMetricsSnapshot = vi.fn().mockResolvedValue(null);
+    const resolvers: Array<(value: unknown) => void> = [];
+    readBackendQueryMock.mockImplementation(
+      () => new Promise((resolve) => { resolvers.push(resolve); }) as never,
+    );
+
+    const { result } = renderHook(() =>
+      useAtlasModeData({
+        mode: "atlas",
+        user: baseUser,
+        parsedCycleId: 7,
+        setWeeklyDraft: vi.fn(),
+        setRetroDraft: vi.fn(),
+        loadLeadershipMetricsSnapshot,
+      }),
+    );
+
+    let run: Promise<void> = Promise.resolve();
+    act(() => {
+      run = result.current.refreshDashboardModeData(baseUser, "dashboard");
+    });
+    // Both reads are now in flight: a visible load would already show "Loading...".
+    expect(resolvers.length).toBe(2);
+    expect(result.current.modeDataPending).toBe(false);
+
+    await act(async () => {
+      resolvers.forEach((resolve) => resolve({ tasks: [{ id: 1 }], work_logs: [] }));
+      await run;
+    });
+
+    expect(result.current.modeDataPending).toBe(false);
+    expect(result.current.modeDataError).toBe("");
+    expect(loadLeadershipMetricsSnapshot).toHaveBeenCalledWith(baseUser, { silent: true });
+  });
+  it("keeps the current data and shows no error when a background refresh fails", async () => {
+    const readBackendQueryMock = vi.mocked(api.readBackendQuery);
+    const loadLeadershipMetricsSnapshot = vi.fn().mockResolvedValue(null);
+    readBackendQueryMock.mockResolvedValue({ tasks: [{ id: 1 }], work_logs: [{ id: 9 }] } as never);
+
+    const { result } = renderHook(() =>
+      useAtlasModeData({
+        mode: "atlas",
+        user: baseUser,
+        parsedCycleId: 7,
+        setWeeklyDraft: vi.fn(),
+        setRetroDraft: vi.fn(),
+        loadLeadershipMetricsSnapshot,
+      }),
+    );
+
+    await act(async () => { await result.current.loadModeData(baseUser, "timeline"); });
+    expect(result.current.timelineTasks).toHaveLength(1);
+
+    readBackendQueryMock.mockRejectedValue(new Error("network down"));
+    await act(async () => { await result.current.refreshDashboardModeData(baseUser, "timeline"); });
+
+    expect(result.current.timelineTasks).toHaveLength(1);
+    expect(result.current.timelineLogs).toHaveLength(1);
+    expect(result.current.modeDataError).toBe("");
+  });
+
+  it("still reports the error and the Loading state for an explicit load", async () => {
+    const readBackendQueryMock = vi.mocked(api.readBackendQuery);
+    readBackendQueryMock.mockRejectedValue(new Error("network down"));
+
+    const { result } = renderHook(() =>
+      useAtlasModeData({
+        mode: "atlas",
+        user: baseUser,
+        parsedCycleId: 7,
+        setWeeklyDraft: vi.fn(),
+        setRetroDraft: vi.fn(),
+        loadLeadershipMetricsSnapshot: vi.fn().mockResolvedValue(null),
+      }),
+    );
+
+    await act(async () => { await result.current.loadModeData(baseUser, "timeline"); });
+
+    expect(result.current.modeDataError).toBe("network down");
+    expect(result.current.modeDataPending).toBe(false);
+  });
+
+  it("keeps the same array references when a refresh returns identical data", async () => {
+    const readBackendQueryMock = vi.mocked(api.readBackendQuery);
+    readBackendQueryMock.mockImplementation(async () => ({ tasks: [{ id: 1 }], work_logs: [{ id: 2 }] }) as never);
+
+    const { result } = renderHook(() =>
+      useAtlasModeData({
+        mode: "atlas",
+        user: baseUser,
+        parsedCycleId: 7,
+        setWeeklyDraft: vi.fn(),
+        setRetroDraft: vi.fn(),
+        loadLeadershipMetricsSnapshot: vi.fn().mockResolvedValue(null),
+      }),
+    );
+
+    await act(async () => { await result.current.loadModeData(baseUser, "timeline"); });
+    const tasksBefore = result.current.timelineTasks;
+    const logsBefore = result.current.timelineLogs;
+    await act(async () => { await result.current.refreshDashboardModeData(baseUser, "timeline"); });
+
+    expect(result.current.timelineTasks).toBe(tasksBefore);
+    expect(result.current.timelineLogs).toBe(logsBefore);
+  });  it("auto-loads mode data when user enters non-atlas/non-admin mode", async () => {
     const readBackendQueryMock = vi.mocked(api.readBackendQuery);
     const setWeeklyDraft = vi.fn();
     const setRetroDraft = vi.fn();

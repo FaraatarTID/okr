@@ -60,26 +60,43 @@ export default function useLeadershipInsights({
   }, [leadershipMetrics, mode]);
 
   const loadLeadershipMetricsSnapshot = useCallback(
-    async (activeUser: AuthUser): Promise<LeadershipMetricsResponse | null> => {
+    async (
+      activeUser: AuthUser,
+      options: { silent?: boolean } = {},
+    ): Promise<LeadershipMetricsResponse | null> => {
       if (!parsedCycleId) {
         setLeadershipMetrics(null);
         return null;
       }
-      setLeadershipPending(true);
-      setLeadershipError("");
+      // A silent refresh keeps the current metrics and buttons untouched and, if the
+      // read fails, keeps the last good numbers instead of blanking the panel.
+      const silent = options.silent === true;
+      if (!silent) {
+        setLeadershipPending(true);
+        setLeadershipError("");
+      }
       try {
         const metrics = await readLeadershipMetrics({
           actor_username: activeUser.username,
           cycle_id: parsedCycleId,
         });
-        setLeadershipMetrics(metrics || null);
+        setLeadershipMetrics((previous) =>
+          previous !== null && JSON.stringify(previous) === JSON.stringify(metrics || null)
+            ? previous
+            : metrics || null,
+        );
         return metrics || null;
       } catch (error) {
+        if (silent) {
+          return null;
+        }
         setLeadershipError(String(error instanceof Error ? error.message : error));
         setLeadershipMetrics(null);
         return null;
       } finally {
-        setLeadershipPending(false);
+        if (!silent) {
+          setLeadershipPending(false);
+        }
       }
     },
     [parsedCycleId],
