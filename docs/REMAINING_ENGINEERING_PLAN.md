@@ -622,9 +622,20 @@ Fixed in the same change:
 - `tests/test_error_text_redaction.py`: 25 tests; 13 of 13 mutations killed.
 
 Limits: it is pattern-based, so a credential with an unusual name in an unusual place passes; the pattern list is a
-judgement, not a proof. Only the provider call sites and the job store were changed: `ai_service.py` still has
-about 20 broad handlers that put `exc` text into return values, which were not audited here. The PDF job's error is
-a fixed string. Existing rows already stored are not rewritten.
+judgement, not a proof. The PDF job's error is a fixed string. Existing rows already stored are not rewritten.
+
+**`ai_service.py` audit (follow-up).** It has 14 `except Exception` handlers. Thirteen log at `debug`/`warning`/
+`error` or return fixed text; the one that returns exception text is the REST fallback in `_fetch_node_for_analysis`
+(`"Node fetch failed (direct + REST): {rest_err}"`), and that text comes from `SupabaseTransportError`. I ran it
+against an unreachable Supabase URL that carried user info, a query-string token and a service key: none appeared,
+because `supabase_api_mode_transport.py` rewraps httpx errors as fixed text (`<Kind> ... : METHOD /path`). That is a
+property of the transport, not of `ai_service.py`, so `tests/test_supabase_transport_error_text.py` pins it (5 tests;
+3 of 3 mutations killed) and fails if a change passes the library message or the URL through.
+
+Not covered: the 27 `HTTPException(detail=str(exc))` sites in `main_mutation_handlers.py` and
+`main_workflow_handlers.py` return the text of `PermissionError` and `ValueError`. Those are the application's own
+messages, and nothing checks that a `ValueError` from a library (for example a parse error that quotes its input) cannot
+reach them.
 
 ## Verification drills
 
