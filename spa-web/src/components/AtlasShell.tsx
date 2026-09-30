@@ -37,7 +37,7 @@ import {
 } from "@/components/atlas-shell/nodeMutation";
 import { selectedNodeDetails } from "@/components/atlas-shell/inspectorDetails";
 import type AdminModePanelComponent from "@/components/atlas-shell/AdminModePanel";
-import PasswordChangePanel from "@/components/PasswordChangePanel";
+import SidebarAccountCard from "@/components/atlas-shell/SidebarAccountCard";
 import type { AdminTab } from "@/components/atlas-shell/AdminModePanel";
 import type DashboardLeadershipPanelComponent from "@/components/atlas-shell/DashboardLeadershipPanel";
 import type TimelineModePanelComponent from "@/components/atlas-shell/TimelineModePanel";
@@ -1443,27 +1443,7 @@ export default function AtlasShell() {
               );
             })}
           </div>
-          <div
-            style={{
-              marginTop: "0.8rem",
-              border: "1px solid var(--line)",
-              borderRadius: 10,
-              padding: "0.55rem 0.58rem",
-              background: "var(--surface-alt)",
-            }}
-          >
-            <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>Signed in as</div>
-            <strong style={{ display: "block", marginTop: "0.2rem" }}>{user.display_name}</strong>
-            <PasswordChangePanel user={user} compact />
-            <button
-              className="primary-button"
-              type="button"
-              onClick={handleSignOut}
-              style={{ marginTop: "0.55rem", width: "100%" }}
-            >
-              Sign out
-            </button>
-          </div>
+          <SidebarAccountCard user={user} isAdmin={isAdmin} onSignOut={handleSignOut} />
         </aside>
         <div style={{ paddingTop: "0.4rem" }}>
 
