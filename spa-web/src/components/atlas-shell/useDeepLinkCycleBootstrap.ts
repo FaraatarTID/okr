@@ -16,6 +16,13 @@ type ResolvedCycleState = Pick<
 type UseDeepLinkCycleBootstrapInput = {
   user: AuthUser | null;
   canManageCycleSelection?: boolean;
+  /**
+   * Hold the URL write-back while the shell is about to redirect elsewhere.
+   * `router.replace` is asynchronous, so `window.location.pathname` still names
+   * the route being left; writing it back with `history.replaceState` makes the
+   * router drop the pending redirect and strands the user on the old route.
+   */
+  suspendUrlSync?: boolean;
   parsedCycleId: number | null;
   resolvedCycle: ResolvedCycleState | null;
   sessionCycles: CycleSummary[];
@@ -35,6 +42,7 @@ type UseDeepLinkCycleBootstrapInput = {
 export default function useDeepLinkCycleBootstrap({
   user,
   canManageCycleSelection = true,
+  suspendUrlSync = false,
   parsedCycleId,
   resolvedCycle,
   deepLinkReady,
@@ -229,7 +237,7 @@ export default function useDeepLinkCycleBootstrap({
     // When the session is cleared, the shell is leaving for the login route.
     // Do not let the last authenticated deep-link state rewrite that pending
     // navigation back onto the shell URL.
-    if (!user || !deepLinkReady || typeof window === "undefined") {
+    if (!user || !deepLinkReady || suspendUrlSync || typeof window === "undefined") {
       return;
     }
     const nextSearch = deepLinkQuery ? `?${deepLinkQuery}` : "";
@@ -238,7 +246,7 @@ export default function useDeepLinkCycleBootstrap({
     }
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
     window.history.replaceState(null, "", nextUrl);
-  }, [deepLinkQuery, deepLinkReady, user]);
+  }, [deepLinkQuery, deepLinkReady, suspendUrlSync, user]);
 
   useEffect(() => {
     // Re-derive the mode whenever the route changes. This is what makes the
