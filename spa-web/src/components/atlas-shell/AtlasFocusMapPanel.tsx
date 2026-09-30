@@ -395,7 +395,9 @@ export default function AtlasFocusMapPanel({
                           if (event.key === "ArrowRight" && node.children.length) {
                             event.preventDefault();
                             const child = layout.nodes.find((item) => item.ref === node.children[0]);
-                            child && document.getElementById(`orbit-node-${child.ref}`)?.focus();
+                            if (child) {
+                              document.getElementById(`orbit-node-${child.ref}`)?.focus();
+                            }
                           }
                           if (event.key === "ArrowLeft" && node.parent) {
                             event.preventDefault();
