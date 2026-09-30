@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional, Sequence, Set
 
 from src.config_runtime import get_config_value
 from src.observability_metrics import record_provider_call
+from src.observability_redaction import redact_error_text
 from src.services.http_client import post_json_with_retry
 
 try:
@@ -362,6 +363,15 @@ def _parse_json_payload(text: str, provider_name: str) -> Dict[str, Any]:
         return {"error": f"Failed to parse {provider_name} JSON response."}
 
 
+def _safe_error(value: Any, *secrets: Optional[str]) -> str:
+    """Error text for a provider failure with the configured credentials removed.
+
+    Library exceptions echo the request URL, and the URL can carry a key in its query string or user info.
+    `secrets` are the configured values; the patterns in `redact_error_text` catch the rest.
+    """
+    return redact_error_text(value, secrets=tuple(s for s in secrets if s))
+
+
 def _call_gemini_json(prompt: str) -> Dict[str, Any]:
     if not _GENAI_AVAILABLE:
         return {"error": "AI provider 'gemini' requires google-genai package."}
@@ -382,7 +392,7 @@ def _call_gemini_json(prompt: str) -> Dict[str, Any]:
             return {"error": "Gemini returned an empty response."}
         return _parse_json_payload(text, "Gemini")
     except Exception as exc:
-        return {"error": f"Gemini request failed: {exc}"}
+        return {"error": f"Gemini request failed: {_safe_error(exc, api_key)}"}
 
 
 def _openai_chat_completions_url(base_url: str) -> str:
@@ -446,11 +456,15 @@ def _call_openai_compatible_json(prompt: str) -> Dict[str, Any]:
             timeout=(5.0, get_openai_request_timeout_seconds()),
         )
     except Exception as exc:
-        return {"error": f"AI provider request failed: {exc}"}
+        return {
+            "error": f"AI provider request failed: {_safe_error(exc, api_key, base_url)}"
+        }
 
     if response.status_code >= 400:
         text = str(response.text or "").strip()
-        snippet = text[:180] + ("..." if len(text) > 180 else "")
+        snippet = _safe_error(text[:180], api_key, base_url) + (
+            "..." if len(text) > 180 else ""
+        )
         return {
             "error": (
                 "AI provider 'openai_compatible' returned HTTP "
@@ -461,7 +475,9 @@ def _call_openai_compatible_json(prompt: str) -> Dict[str, Any]:
     try:
         body = response.json()
     except Exception as exc:
-        return {"error": f"AI provider response is not valid JSON: {exc}"}
+        return {
+            "error": f"AI provider response is not valid JSON: {_safe_error(exc, api_key, base_url)}"
+        }
 
     choices = body.get("choices") if isinstance(body, dict) else None
     if not choices or not isinstance(choices, list):

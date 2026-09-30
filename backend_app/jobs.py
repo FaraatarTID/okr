@@ -21,6 +21,7 @@ from src.database import get_session_context
 from src.models import AsyncJob, AsyncJobStatus, AuditEvent, User
 from src.utils.time_utils import utc_now_naive
 from src.observability_metrics import record_job_submission
+from src.observability_redaction import redact_error_text
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,7 +39,8 @@ def _normalize_max_attempts(raw: Any) -> int:
 
 
 def _truncate_error_text(value: str) -> str:
-    return str(value or "")[:_ERROR_TEXT_MAX_CHARS]
+    """Redact credentials, then truncate. Redaction first, so a secret cut in half is not left behind."""
+    return redact_error_text(value or "")[:_ERROR_TEXT_MAX_CHARS]
 
 
 def _loads_json(raw: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -419,7 +421,7 @@ def mark_job_cancelled(job_id: str, error_text: Optional[str] = None) -> None:
             return
         job.status = AsyncJobStatus.CANCELLED
         if error_text:
-            job.error_text = str(error_text)[:2000]
+            job.error_text = _truncate_error_text(str(error_text))
         job.finished_at = now
         job.updated_at = now
         session.add(job)
