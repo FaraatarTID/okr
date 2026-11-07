@@ -29,7 +29,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       unclassified: ${{ steps.filter.outputs.unclassified }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Detect changed areas
         id: filter
         uses: dorny/paths-filter@v4
@@ -143,10 +143,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: "pip"
@@ -213,10 +213,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: "pip"
@@ -258,7 +258,7 @@ jobs:
         run: uv pip install --python "$GITHUB_WORKSPACE/.venv/bin/python" pip-licenses
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
 
@@ -420,10 +420,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "npm"
@@ -493,10 +493,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: "pip"
@@ -512,7 +512,7 @@ jobs:
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "npm"
@@ -565,7 +565,7 @@ jobs:
     if: ${{ needs.changes.outputs.docs == 'true' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Documentation HQ Link Check
         run: python scripts/check_docs_hq_links.py
@@ -577,8 +577,8 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true' }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -587,7 +587,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --group dev
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -608,8 +608,8 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.topology == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true' }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - uses: astral-sh/setup-uv@v7
@@ -628,7 +628,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Deliberately unconditional rather than path-filtered: the failure this gate
       # exists to prevent was a workflow referencing a secret no reviewer had been
@@ -642,7 +642,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Verify observability and runbook contract
         run: python -m scripts.verify_observability_readiness
       - name: Verify OPS-01 artifact contract

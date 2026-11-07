@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Verify immutable commit identity
         shell: bash
         run: |
@@ -95,7 +95,7 @@ jobs:
             echo "workflow_dispatch must run from the protected pre-release branch"
             exit 1
           fi
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -117,8 +117,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -142,8 +142,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -163,8 +163,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: {python-version: "3.11"}
       - uses: astral-sh/setup-uv@v7
       - run: |
@@ -183,7 +183,7 @@ jobs:
     timeout-minutes: 30
     needs: [validate, quality-python, quality-spa, security]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build web image with immutable local tag
         run: docker build --file spa-web/Dockerfile --tag "okr-prerelease-web:${RELEASE_SHA}" --label "org.opencontainers.image.revision=${RELEASE_SHA}" .
       - name: Build BFF image with immutable local tag
@@ -260,8 +260,8 @@ jobs:
       WEB_URL: ${{ vars.DARKUBE_WEB_URL }}
       BFF_HEALTH_URL: ${{ vars.DARKUBE_BFF_HEALTH_URL }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: {python-version: "3.11"}
       - uses: astral-sh/setup-uv@v7
       - run: |
@@ -306,8 +306,8 @@ jobs:
       MIGRATION_HEAD: ${{ inputs.migration_head }}
       EXPECTED_MIGRATION_HEAD: ${{ inputs.expected_migration_head }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: {python-version: "3.11"}
       - uses: astral-sh/setup-uv@v7
       - run: |
@@ -429,7 +429,7 @@ jobs:
     env:
       DEPLOYMENT_EVIDENCE_JSON: ${{ inputs.darkube_deployment_evidence_json }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Download GHCR release manifest
         uses: actions/download-artifact@v8
         with:
@@ -478,8 +478,8 @@ jobs:
       WORKER_BUILD_ID: ${{ inputs.worker_build_id }}
       DATABASE_RESOURCE_ID: ${{ inputs.database_resource_id }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: {python-version: "3.11"}
       - name: Download public and private verification artifacts
         if: always()
