@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout verification tools
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download staging verification
         uses: actions/download-artifact@v8
@@ -74,7 +74,7 @@ jobs:
     needs: verify-staging
     steps:
       - name: Checkout release policy
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -121,7 +121,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout evidence and gate
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # The Phase 1 evidence bundle must be complete before a release is promoted.
       #

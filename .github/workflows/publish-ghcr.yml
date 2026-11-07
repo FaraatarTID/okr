@@ -41,7 +41,7 @@ jobs:
             dockerfile: deploy/docker/Dockerfile
     steps:
       - name: Checkout release source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Reject mutable deployment references
         run: python scripts/check_immutable_deploy_config.py
@@ -131,7 +131,7 @@ jobs:
     needs: publish
     steps:
       - name: Checkout release source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download image digest fragments
         uses: actions/download-artifact@v8
