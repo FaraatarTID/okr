@@ -71,6 +71,9 @@ def test_release_workflows_ignore_documentation_only_pushes() -> None:
 
 def test_release_workflows_use_supported_cosign_installer_line() -> None:
     root = WORKFLOW.parents[1]
+    installer_ref = (
+        "uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3"
+    )
     release_workflows = (
         "publish-ghcr.yml",
         "verify-ghcr-signatures.yml",
@@ -79,10 +82,7 @@ def test_release_workflows_use_supported_cosign_installer_line() -> None:
     )
     for name in release_workflows:
         workflow = (root / "workflows" / name).read_text(encoding="utf-8")
-        assert (
-            "uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2"
-            in workflow
-        )
+        assert installer_ref in workflow
         # `curl-retries` is not an input `sigstore/cosign-installer` accepts; GitHub
         # reports the valid inputs as cosign-release, install-dir and use-sudo. This
         # assertion previously required the line to be PRESENT, which certified an
@@ -99,7 +99,7 @@ def test_cosign_health_workflow_exercises_the_same_installer_contract() -> None:
     workflow = (root / "workflows" / "cosign-health.yml").read_text(encoding="utf-8")
     assert "schedule:" in workflow
     assert (
-        "uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2"
+        "uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3"
         in workflow
     )
     # See the note in the release-workflow test: the input is not accepted by the
