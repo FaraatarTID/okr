@@ -71,9 +71,7 @@ def test_release_workflows_ignore_documentation_only_pushes() -> None:
 
 def test_release_workflows_use_supported_cosign_installer_line() -> None:
     root = WORKFLOW.parents[1]
-    installer_ref = (
-        "uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3"
-    )
+    installer_ref = "uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3"
     release_workflows = (
         "publish-ghcr.yml",
         "verify-ghcr-signatures.yml",
